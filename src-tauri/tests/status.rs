@@ -16,6 +16,9 @@ fn edit() -> ItemEdit {
         priority: None,
         tags: Vec::new(),
         due: None,
+        estimate: None,
+        acceptance: Vec::new(),
+        clarifications: Vec::new(),
     }
 }
 
@@ -384,10 +387,11 @@ fn set_status_clears_bypass_fields() {
     vault
         .drop_item(&requirement.id, "不做这个报表了")
         .expect("放弃");
+    // 需求进 ready 另有 DoR 门（见 refinement.rs）：这里用 doing 验证离开 dropped 会清旁路字段
     let revived = vault
-        .set_status(&requirement.id, Status::Ready)
-        .expect("dropped → ready");
-    assert_eq!(revived.status, Status::Ready);
+        .set_status(&requirement.id, Status::Doing)
+        .expect("dropped → doing");
+    assert_eq!(revived.status, Status::Doing);
     assert_eq!(revived.dropped_reason, None);
     let raw = raw_file(&vault, &requirement.id, "报表导出重构");
     assert!(!raw.contains("dropped_reason"), "{raw}");

@@ -372,6 +372,9 @@ fn child_progress_does_not_touch_parent_fields() {
                 priority: None,
                 tags: Vec::new(),
                 due: None,
+                estimate: None,
+                acceptance: Vec::new(),
+                clarifications: Vec::new(),
             },
         )
         .expect("编辑子条目正文");

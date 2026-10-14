@@ -19,6 +19,13 @@ import { DatePicker } from '@/components/date-time'
 import ItemCreateDialog from '@/components/item/ItemCreateDialog.vue'
 import ItemEditDialog from '@/components/item/ItemEditDialog.vue'
 import {
+  estimateText,
+  estimateUnit,
+  ESTIMATE_UNIT_LABELS,
+  ESTIMATE_UNITS,
+  type EstimateUnit,
+} from '@/lib/estimate'
+import {
   ITEM_TYPE_LABELS,
   ITEM_TYPES,
   PRIORITIES,
@@ -74,6 +81,15 @@ const typeOptions = ITEM_TYPES.map((value) => ({ value, label: ITEM_TYPE_LABELS[
 const statusOptions = STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }))
 const priorityOptions = PRIORITIES.map((value) => ({ value, label: value }))
 const spaceOptions = SPACES.map((value) => ({ value, label: SPACE_LABELS[value] }))
+/** 估算展示口径（本地设置，不进 vault）：人日 / 点数 */
+const estimateUnitOptions = ESTIMATE_UNITS.map((value) => ({
+  value,
+  label: ESTIMATE_UNIT_LABELS[value],
+}))
+
+function selectEstimateUnit(value: string) {
+  estimateUnit.value = (value || 'days') as EstimateUnit
+}
 const viewOptions = computed(() =>
   views.value.map((view) => ({ value: view.name, label: view.name })),
 )
@@ -274,6 +290,15 @@ function onUpdated(updated: Item) {
         <Button variant="outline" size="sm" :disabled="rebuilding" @click="rebuild">
           {{ rebuilding ? '重建中…' : '重建索引' }}
         </Button>
+        <span class="text-muted-foreground text-xs">估算显示</span>
+        <SelectField
+          :model-value="estimateUnit"
+          :options="estimateUnitOptions"
+          :clearable="false"
+          aria-label="估算显示单位"
+          class="w-28"
+          @update:model-value="selectEstimateUnit"
+        />
         <span class="text-muted-foreground text-xs">{{ items.length }} 条</span>
       </div>
 
@@ -317,6 +342,9 @@ function onUpdated(updated: Item) {
               <span class="text-muted-foreground text-xs">
                 {{ item.id }} · {{ ITEM_TYPE_LABELS[item.type] }} · {{ SPACE_LABELS[item.space] }} ·
                 {{ STATUS_LABELS[item.status] }} · {{ item.created.slice(0, 10) }}
+              </span>
+              <span v-if="item.estimate" class="text-muted-foreground text-xs">
+                估算 {{ estimateText(item.estimate) }}
               </span>
               <span
                 v-if="item.status === 'blocked' || item.status === 'dropped'"

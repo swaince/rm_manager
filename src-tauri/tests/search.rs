@@ -489,5 +489,8 @@ fn edit() -> ItemEdit {
         priority: None,
         tags: Vec::new(),
         due: None,
+        estimate: None,
+        acceptance: Vec::new(),
+        clarifications: Vec::new(),
     }
 }
