@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
@@ -71,6 +72,17 @@ function onUpdated(updated: Item) {
               <span class="text-muted-foreground text-xs">
                 {{ item.id }} · {{ ITEM_TYPE_LABELS[item.type] }} · {{ SPACE_LABELS[item.space] }} ·
                 {{ STATUS_LABELS[item.status] }} · {{ item.created.slice(0, 10) }}
+              </span>
+              <span
+                v-if="item.status === 'blocked' || item.status === 'dropped'"
+                class="flex flex-wrap items-center gap-1"
+              >
+                <Badge :variant="item.status === 'blocked' ? 'destructive' : 'outline'">
+                  {{ STATUS_LABELS[item.status] }}
+                </Badge>
+                <span class="text-muted-foreground text-xs">
+                  {{ item.status === 'blocked' ? item.blocked_reason : item.dropped_reason }}
+                </span>
               </span>
             </div>
             <ItemEditDialog :item="item" @updated="onUpdated" />

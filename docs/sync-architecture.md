@@ -50,7 +50,11 @@ rm-vault/                    # 独立目录（如 D:\rm-vault），本身就是�
 id: REQ-2026-0001
 type: requirement        # idea | requirement | bug | spike | chore | session
 title: 报表导出重构
-status: refining         # inbox|clarifying|refining|ready|scheduled|doing|blocked|review|done|dropped
+status: refining         # 按类型的状态集合见 feature-list FR-0.2；blocked | dropped 是全类型旁路
+blocked_reason: 等运维开通账号 # 仅 blocked：必填
+blocked_waiting_on: 运维组    # 仅 blocked：必填
+blocked_from: doing          # 仅 blocked：解除后回到的状态
+dropped_reason: 需求已过时     # 仅 dropped：必填
 space: work              # work | personal
 project: 内部报表平台
 priority: P1

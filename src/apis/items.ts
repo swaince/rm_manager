@@ -13,6 +13,9 @@ export type ItemStatus =
   | 'review'
   | 'done'
   | 'dropped'
+  | 'kept'
+  | 'active'
+  | 'concluded'
 
 export type ItemPriority = 'P0' | 'P1' | 'P2' | 'P3'
 
@@ -22,6 +25,10 @@ export interface Item {
   type: ItemType
   title: string
   status: ItemStatus
+  blocked_reason: string | null
+  blocked_waiting_on: string | null
+  blocked_from: ItemStatus | null
+  dropped_reason: string | null
   space: Space
   project: string | null
   priority: ItemPriority | null
@@ -64,6 +71,27 @@ export const SPACES: readonly Space[] = ['work', 'personal']
 
 export const PRIORITIES: readonly ItemPriority[] = ['P0', 'P1', 'P2', 'P3']
 
+/** 各类型允许的状态集合（与 Rust allowed_statuses 一致）；blocked / dropped 走独立动作 */
+export const ALLOWED_STATUSES: Record<ItemType, readonly ItemStatus[]> = {
+  idea: ['inbox', 'kept', 'blocked', 'dropped'],
+  requirement: [
+    'inbox',
+    'clarifying',
+    'refining',
+    'ready',
+    'scheduled',
+    'doing',
+    'review',
+    'done',
+    'blocked',
+    'dropped',
+  ],
+  bug: ['inbox', 'ready', 'scheduled', 'doing', 'review', 'done', 'blocked', 'dropped'],
+  chore: ['inbox', 'ready', 'scheduled', 'doing', 'done', 'blocked', 'dropped'],
+  spike: ['inbox', 'doing', 'done', 'blocked', 'dropped'],
+  session: ['active', 'concluded', 'blocked', 'dropped'],
+}
+
 export const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   idea: '想法',
   requirement: '需求',
@@ -89,6 +117,9 @@ export const STATUS_LABELS: Record<ItemStatus, string> = {
   review: '待验收',
   done: '已完成',
   dropped: '已放弃',
+  kept: '保留',
+  active: '进行中',
+  concluded: '已收敛',
 }
 
 export function listItems(): Promise<Item[]> {
@@ -107,4 +138,20 @@ export function createItem(draft: ItemDraft): Promise<Item> {
 
 export function updateItem(id: string, edit: ItemEdit): Promise<Item> {
   return invoke<Item>('update_item', { id, edit })
+}
+
+export function setStatus(id: string, status: ItemStatus): Promise<Item> {
+  return invoke<Item>('set_status', { id, status })
+}
+
+export function blockItem(id: string, reason: string, waitingOn: string): Promise<Item> {
+  return invoke<Item>('block_item', { id, reason, waitingOn })
+}
+
+export function unblockItem(id: string): Promise<Item> {
+  return invoke<Item>('unblock_item', { id })
+}
+
+export function dropItem(id: string, reason: string): Promise<Item> {
+  return invoke<Item>('drop_item', { id, reason })
 }

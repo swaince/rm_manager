@@ -47,7 +47,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::create_item,
             commands::list_items,
-            commands::update_item
+            commands::update_item,
+            commands::set_status,
+            commands::block_item,
+            commands::unblock_item,
+            commands::drop_item
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
