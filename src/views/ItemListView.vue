@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useDebounceFn } from '@vueuse/core'
-import { Badge } from '@/components/ui/badge'
+import { useDebounceFn, useLocalStorage } from '@vueuse/core'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -16,8 +15,10 @@ import {
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
 import { FormField, MultiSelect, SelectField, TextInput } from '@/components/form'
 import { DatePicker } from '@/components/date-time'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ItemCreateDialog from '@/components/item/ItemCreateDialog.vue'
-import ItemEditDialog from '@/components/item/ItemEditDialog.vue'
+import ItemBoard from '@/components/item/ItemBoard.vue'
+import ItemList from '@/components/item/ItemList.vue'
 import {
   ITEM_TYPE_LABELS,
   ITEM_TYPES,
@@ -51,6 +52,25 @@ const loading = ref(true)
 const errorMessage = ref('')
 const notice = ref('')
 const filtering = ref(false)
+
+/** 视图形态：看板 / 列表 / 收件箱；选择只存本机 localStorage（不进 vault、不进 git） */
+const VIEW_OPTIONS = [
+  { value: 'board', label: '看板' },
+  { value: 'list', label: '列表' },
+  { value: 'inbox', label: '收件箱' },
+] as const
+type ViewMode = (typeof VIEW_OPTIONS)[number]['value']
+const viewMode = useLocalStorage<ViewMode>('rm-manager:item-view', 'list')
+
+function selectView(value: string | number) {
+  viewMode.value = value as ViewMode
+}
+
+watch(viewMode, (mode) => {
+  // 收件箱固定 status=inbox，其余视图沿用筛选条
+  if (mode === 'inbox') statuses.value = ['inbox']
+  void load()
+})
 
 /** 筛选条：各字段单独持有，查之前攒成 SearchQuery */
 const text = ref('')
@@ -126,6 +146,9 @@ async function refreshProgress() {
 async function load() {
   const query = currentQuery()
   filtering.value = JSON.stringify(query) !== JSON.stringify(emptySearchQuery())
+
+  // 收件箱视图固定只看 inbox 条目（筛选条同步回显该条件）
+  if (viewMode.value === 'inbox') query.statuses = ['inbox']
   loading.value = true
   errorMessage.value = ''
   try {
@@ -222,13 +245,22 @@ function onUpdated(updated: Item) {
 </script>
 
 <template>
-  <main class="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 p-8">
+  <main class="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 p-8">
     <header class="flex items-start justify-between gap-4">
       <div>
         <h1 class="text-xl font-semibold">条目</h1>
         <p class="text-muted-foreground text-sm">
           数据真源是 vault 里的 Markdown 文件，一条目一文件。
         </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <Tabs :model-value="viewMode" @update:model-value="selectView">
+          <TabsList>
+            <TabsTrigger v-for="option in VIEW_OPTIONS" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
       <ItemCreateDialog @created="load" />
     </header>
@@ -300,41 +332,8 @@ function onUpdated(updated: Item) {
       </CardContent>
     </Card>
 
-    <ul v-else class="space-y-2">
-      <li v-for="item in items" :key="item.id">
-        <Card>
-          <CardContent class="flex items-center justify-between gap-3">
-            <div class="flex min-w-0 flex-col gap-1">
-              <div class="flex items-center gap-2">
-                <span class="font-medium">{{ item.title }}</span>
-                <span
-                  v-if="progress[item.id]"
-                  class="text-muted-foreground inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium tabular-nums"
-                >
-                  {{ progress[item.id].done }}/{{ progress[item.id].total }}
-                </span>
-              </div>
-              <span class="text-muted-foreground text-xs">
-                {{ item.id }} · {{ ITEM_TYPE_LABELS[item.type] }} · {{ SPACE_LABELS[item.space] }} ·
-                {{ STATUS_LABELS[item.status] }} · {{ item.created.slice(0, 10) }}
-              </span>
-              <span
-                v-if="item.status === 'blocked' || item.status === 'dropped'"
-                class="flex flex-wrap items-center gap-1"
-              >
-                <Badge :variant="item.status === 'blocked' ? 'destructive' : 'outline'">
-                  {{ STATUS_LABELS[item.status] }}
-                </Badge>
-                <span class="text-muted-foreground text-xs">
-                  {{ item.status === 'blocked' ? item.blocked_reason : item.dropped_reason }}
-                </span>
-              </span>
-            </div>
-            <ItemEditDialog :item="item" @updated="onUpdated" />
-          </CardContent>
-        </Card>
-      </li>
-    </ul>
+    <ItemBoard v-else-if="viewMode === 'board'" :items="items" @updated="onUpdated" />
+    <ItemList v-else :items="items" :progress="progress" @updated="onUpdated" />
 
     <Dialog v-model:open="saveOpen">
       <DialogContent>
