@@ -31,7 +31,6 @@ import {
   unblockItem,
   dropItem,
   ALLOWED_STATUSES,
-  STATUS_LABELS,
   type Item,
   type ItemEdit,
   type ItemPriority,

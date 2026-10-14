@@ -28,7 +28,6 @@ import {
   STATUS_LABELS,
   deleteView,
   emptySearchQuery,
-  listItems,
   listViews,
   parentProgress,
   rebuildIndex,
