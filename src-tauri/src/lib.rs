@@ -62,7 +62,9 @@ pub fn run() {
             commands::set_parent,
             commands::children_of,
             commands::item_timeline,
-            commands::parent_progress
+            commands::parent_progress,
+            commands::schedule_item,
+            commands::set_focus
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

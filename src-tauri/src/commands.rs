@@ -105,3 +105,17 @@ pub fn parent_progress(vault: State<'_, Vault>, id: String) -> Result<Progress, 
 pub fn item_timeline(vault: State<'_, Vault>, id: String) -> Result<Vec<TimelineEntry>, Error> {
     vault.item_timeline(&id)
 }
+
+#[tauri::command]
+pub fn schedule_item(
+    vault: State<'_, Vault>,
+    id: String,
+    week: Option<String>,
+) -> Result<Item, Error> {
+    vault.schedule_item(&id, week.as_deref())
+}
+
+#[tauri::command]
+pub fn set_focus(vault: State<'_, Vault>, id: String, date: Option<String>) -> Result<Item, Error> {
+    vault.set_focus(&id, date.as_deref())
+}

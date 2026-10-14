@@ -142,6 +142,12 @@ pub struct Item {
     pub due: Option<String>,
     /// 拆解：父条目 id；顶层条目为 None
     pub parent: Option<String>,
+    /// 排期：所排那周的周一日期（YYYY-MM-DD）；未排期为 None（存周一日期避免「第几周」歧义）
+    #[serde(default)]
+    pub scheduled_week: Option<String>,
+    /// 今日焦点：焦点当天日期（YYYY-MM-DD），等于今天即入选；未选为 None（default 兼容旧索引 JSON）
+    #[serde(default)]
+    pub focus_on: Option<String>,
     pub created: String,
     pub body: String,
 }
