@@ -1,6 +1,7 @@
 use tauri::State;
 
 use crate::error::Error;
+use crate::git::TimelineEntry;
 use crate::index::{SavedView, SearchQuery};
 use crate::model::{Item, ItemEdit, ItemType, Progress, Space, Status};
 use crate::vault::Vault;
@@ -99,4 +100,8 @@ pub fn children_of(vault: State<'_, Vault>, id: String) -> Result<Vec<Item>, Err
 #[tauri::command]
 pub fn parent_progress(vault: State<'_, Vault>, id: String) -> Result<Progress, Error> {
     vault.parent_progress(&id)
+}
+#[tauri::command]
+pub fn item_timeline(vault: State<'_, Vault>, id: String) -> Result<Vec<TimelineEntry>, Error> {
+    vault.item_timeline(&id)
 }

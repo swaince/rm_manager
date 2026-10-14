@@ -31,12 +31,14 @@ import {
   unblockItem,
   dropItem,
   ALLOWED_STATUSES,
+  itemTimeline,
   type Item,
   type ItemEdit,
   type ItemPriority,
   type ItemType,
   type Space,
   type ItemStatus,
+  type TimelineEntry,
 } from '@/apis/items'
 
 const props = defineProps<{ item: Item }>()
@@ -74,6 +76,10 @@ const actionSaving = ref(false)
 const parentId = ref('')
 const children = ref<Item[]>([])
 const parentOptions = ref<{ value: string; label: string }[]>([])
+
+/** 变更历史：折叠区，展开时才拉取（数据来自本地 git 提交历史，最新在前） */
+const historyOpen = ref(false)
+const timeline = ref<TimelineEntry[]>([])
 
 /** 最近一次成功落盘的载荷，用来判断有没有未保存的改动 */
 const savedPayload = ref('')
@@ -126,6 +132,8 @@ function hydrate(item: Item) {
   savedPayload.value = JSON.stringify(payload())
   status.value = item.status
   actionOpen.value = false
+  historyOpen.value = false
+  timeline.value = []
   actionError.value = ''
   errorMessage.value = ''
 }
@@ -141,6 +149,32 @@ async function loadRelations() {
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : String(error)
   }
+}
+
+/** 状态流转时间线来自 git 历史；拉取失败走统一错误提示，不影响其他功能 */
+async function loadTimeline() {
+  try {
+    timeline.value = await itemTimeline(props.item.id)
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : String(error)
+  }
+}
+
+function toggleHistory() {
+  historyOpen.value = !historyOpen.value
+  if (historyOpen.value) void loadTimeline()
+}
+
+/** RFC3339 直接截前缀显示（不引日期库）：2026-10-14T10:00:00+08:00 → 2026-10-14 10:00 */
+function dayMinute(at: string): string {
+  return at.slice(0, 16).replace('T', ' ')
+}
+
+/** 停留时长按量级取整 */
+function dwellText(seconds: number): string {
+  if (seconds < 60) return `${seconds} 秒`
+  if (seconds < 3600) return `${Math.round(seconds / 60)} 分钟`
+  return `${Math.round(seconds / 3600)} 小时`
 }
 
 /** 父条目是动作级修改：选中即落盘，不走正文的防抖 */
@@ -447,6 +481,34 @@ async function confirmAction() {
               </ItemEditDialog>
             </li>
           </ul>
+        </section>
+
+        <section class="space-y-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            class="h-auto px-0"
+            @click="toggleHistory"
+          >
+            变更历史{{ historyOpen ? '（收起）' : '（展开）' }}
+          </Button>
+          <ul v-if="historyOpen" class="space-y-1">
+            <li
+              v-for="(entry, index) in timeline"
+              :key="index"
+              class="flex flex-wrap items-baseline gap-2 text-sm"
+            >
+              <span class="text-muted-foreground">{{ dayMinute(entry.at) }}</span>
+              <span>{{ entry.summary }}</span>
+              <span v-if="entry.dwell_seconds !== null" class="text-muted-foreground">
+                停留 {{ dwellText(entry.dwell_seconds) }}
+              </span>
+            </li>
+          </ul>
+          <p v-if="historyOpen && !timeline.length" class="text-muted-foreground text-sm">
+            暂无变更记录
+          </p>
         </section>
       </div>
 

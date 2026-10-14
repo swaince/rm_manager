@@ -244,3 +244,19 @@ export function childrenOf(id: string): Promise<Item[]> {
 export function parentProgress(id: string): Promise<Progress> {
   return invoke<Progress>('parent_progress', { id })
 }
+
+/** 状态流转记录的一条（来自本地 git 提交历史，最新在前）；后两个字段仅状态变更提交有值 */
+export interface TimelineEntry {
+  /** 提交时间，RFC3339 */
+  at: string
+  /** 自动生成的提交摘要，如 `REQ-2026-0001: status inbox→doing` */
+  summary: string
+  /** 本条提交进入的状态 */
+  status_to: ItemStatus | null
+  /** 在上一个状态停留的秒数；最近一次状态变更为 null */
+  dwell_seconds: number | null
+}
+
+export function itemTimeline(id: string): Promise<TimelineEntry[]> {
+  return invoke<TimelineEntry[]>('item_timeline', { id })
+}
