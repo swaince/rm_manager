@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useDebounceFn, useLocalStorage } from '@vueuse/core'
+import { listen } from '@tauri-apps/api/event'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -19,6 +20,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ItemCreateDialog from '@/components/item/ItemCreateDialog.vue'
 import ItemBoard from '@/components/item/ItemBoard.vue'
 import ItemList from '@/components/item/ItemList.vue'
+import { ITEMS_CHANGED } from '@/lib/capture'
 import {
   estimateText,
   estimateUnit,
@@ -96,6 +98,9 @@ const saveOpen = ref(false)
 const viewName = ref('')
 const saveError = ref('')
 const rebuilding = ref(false)
+
+/** 条目变更事件（速记 / 收割）的监听句柄 */
+let unlisten: (() => void) | undefined
 
 const typeOptions = ITEM_TYPES.map((value) => ({ value, label: ITEM_TYPE_LABELS[value] }))
 const statusOptions = STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }))
@@ -250,7 +255,11 @@ async function rebuild() {
 
 onMounted(async () => {
   await Promise.all([load(), loadViews()])
+  // 速记窗 / 剪贴板收割落盘后刷新当前查询
+  unlisten = await listen(ITEMS_CHANGED, () => void load())
 })
+
+onUnmounted(() => unlisten?.())
 
 /** 编辑对话框每次落盘都会回传最新条目，就地替换避免整表重载闪烁 */
 function onUpdated(updated: Item) {

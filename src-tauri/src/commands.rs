@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::{Manager, State};
 
 use crate::error::Error;
 use crate::git::TimelineEntry;
@@ -8,6 +8,7 @@ use crate::vault::Vault;
 
 // 命令层是薄胶水：只透传参数，业务在 vault / model 里。
 
+/// 新建条目；标题可为空 —— 迷你速记窗走同一命令，空标题由核心从正文派生（全空用「速记」）。
 #[tauri::command]
 pub fn create_item(
     vault: State<'_, Vault>,
@@ -16,7 +17,41 @@ pub fn create_item(
     space: Space,
     body: String,
 ) -> Result<Item, Error> {
-    vault.create_item(&title, item_type, space, &body)
+    vault.capture_item(&title, item_type, space, &body)
+}
+
+/// 剪贴板收割：正文整段落为 inbox 条目（读剪贴板在胶水层，落库形态在核心）。
+#[tauri::command]
+pub fn harvest_clipboard(vault: State<'_, Vault>, text: String) -> Result<Item, Error> {
+    vault.harvest_clipboard(&text)
+}
+
+/// 显示并聚焦窗口（托盘菜单与速记入口共用）。
+pub(crate) fn reveal_window(app: &tauri::AppHandle, label: &str) {
+    if let Some(window) = app.get_webview_window(label) {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+/// 打开迷你速记窗（全局快捷键 / 主窗常驻入口）。
+#[tauri::command]
+pub fn open_capture_window(app: tauri::AppHandle) {
+    reveal_window(&app, "capture");
+}
+
+/// 收起迷你速记窗（Esc、取消与提交后都走它）。
+#[tauri::command]
+pub fn hide_capture_window(app: tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("capture") {
+        let _ = window.hide();
+    }
+}
+
+/// 把焦点交还主窗（速记提交后）。
+#[tauri::command]
+pub fn focus_main_window(app: tauri::AppHandle) {
+    reveal_window(&app, "main");
 }
 
 #[tauri::command]

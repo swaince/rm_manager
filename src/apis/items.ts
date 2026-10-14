@@ -178,13 +178,19 @@ export function listItems(): Promise<Item[]> {
 }
 
 export function createItem(draft: ItemDraft): Promise<Item> {
-  // 命令参数按 camelCase 传（Rust 侧是 item_type）
+  // 命令参数按 camelCase 传（Rust 侧是 item_type）；标题可为空——复用同一命令的迷你速记窗
+  // 由核心拿「正文首个非空行」兜底（全空用「速记」）
   return invoke<Item>('create_item', {
     title: draft.title,
     itemType: draft.type,
     space: draft.space,
     body: draft.body,
   })
+}
+
+/** 剪贴板收割：整段文本落为 inbox 条目（type=idea、space=personal），标题由核心从正文派生 */
+export function harvestClipboard(text: string): Promise<Item> {
+  return invoke<Item>('harvest_clipboard', { text })
 }
 
 export function updateItem(id: string, edit: ItemEdit): Promise<Item> {
