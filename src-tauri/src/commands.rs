@@ -2,7 +2,7 @@ use tauri::State;
 
 use crate::error::Error;
 use crate::index::{SavedView, SearchQuery};
-use crate::model::{Item, ItemEdit, ItemType, Space, Status};
+use crate::model::{Item, ItemEdit, ItemType, Progress, Space, Status};
 use crate::vault::Vault;
 
 // 命令层是薄胶水：只透传参数，业务在 vault / model 里。
@@ -80,4 +80,23 @@ pub fn unblock_item(vault: State<'_, Vault>, id: String) -> Result<Item, Error> 
 #[tauri::command]
 pub fn drop_item(vault: State<'_, Vault>, id: String, reason: String) -> Result<Item, Error> {
     vault.drop_item(&id, &reason)
+}
+
+#[tauri::command]
+pub fn set_parent(
+    vault: State<'_, Vault>,
+    id: String,
+    parent: Option<String>,
+) -> Result<Item, Error> {
+    vault.set_parent(&id, parent.as_deref())
+}
+
+#[tauri::command]
+pub fn children_of(vault: State<'_, Vault>, id: String) -> Result<Vec<Item>, Error> {
+    vault.children_of(&id)
+}
+
+#[tauri::command]
+pub fn parent_progress(vault: State<'_, Vault>, id: String) -> Result<Progress, Error> {
+    vault.parent_progress(&id)
 }

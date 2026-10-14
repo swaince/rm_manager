@@ -15,6 +15,7 @@ pub enum Error {
     InvalidViewName,
     /// 状态流转被规则拒绝：目标不属于该类型、绕过必填原因、重复阻塞等
     InvalidStatus(String),
+    InvalidParent(String),
 }
 
 impl fmt::Display for Error {
@@ -31,6 +32,7 @@ impl fmt::Display for Error {
             Error::ViewNotFound(name) => write!(f, "视图不存在：{name}"),
             Error::InvalidViewName => write!(f, "视图名不能为空"),
             Error::InvalidStatus(msg) => write!(f, "状态变更被拒：{msg}"),
+            Error::InvalidParent(msg) => write!(f, "父条目设置失败：{msg}"),
         }
     }
 }

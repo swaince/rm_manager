@@ -28,7 +28,9 @@ import {
   STATUS_LABELS,
   deleteView,
   emptySearchQuery,
+  listItems,
   listViews,
+  parentProgress,
   rebuildIndex,
   saveView,
   searchItems,
@@ -36,6 +38,7 @@ import {
   type ItemPriority,
   type ItemStatus,
   type ItemType,
+  type Progress,
   type SavedView,
   type SearchQuery,
   type Space,
@@ -108,6 +111,19 @@ function applyQuery(query: SearchQuery) {
   dueBefore.value = query.due_before ?? ''
 }
 
+/** 父项进度徽标（完成 x/y）：只给「被别的条目当作父」的条目取一次聚合 */
+const progress = ref<Record<string, Progress>>({})
+
+async function refreshProgress() {
+  const parentIds = [
+    ...new Set(items.value.map((item) => item.parent).filter((id): id is string => !!id)),
+  ]
+  const entries = await Promise.all(
+    parentIds.map(async (id) => [id, await parentProgress(id)] as const),
+  )
+  progress.value = Object.fromEntries(entries)
+}
+
 async function load() {
   const query = currentQuery()
   filtering.value = JSON.stringify(query) !== JSON.stringify(emptySearchQuery())
@@ -115,6 +131,7 @@ async function load() {
   errorMessage.value = ''
   try {
     items.value = await searchItems(query)
+    await refreshProgress()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : String(error)
   } finally {
@@ -201,6 +218,7 @@ onMounted(async () => {
 function onUpdated(updated: Item) {
   const index = items.value.findIndex((item) => item.id === updated.id)
   if (index !== -1) items.value[index] = updated
+  void refreshProgress()
 }
 </script>
 
@@ -288,7 +306,15 @@ function onUpdated(updated: Item) {
         <Card>
           <CardContent class="flex items-center justify-between gap-3">
             <div class="flex min-w-0 flex-col gap-1">
-              <span class="font-medium">{{ item.title }}</span>
+              <div class="flex items-center gap-2">
+                <span class="font-medium">{{ item.title }}</span>
+                <span
+                  v-if="progress[item.id]"
+                  class="text-muted-foreground inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium tabular-nums"
+                >
+                  {{ progress[item.id].done }}/{{ progress[item.id].total }}
+                </span>
+              </div>
               <span class="text-muted-foreground text-xs">
                 {{ item.id }} · {{ ITEM_TYPE_LABELS[item.type] }} · {{ SPACE_LABELS[item.space] }} ·
                 {{ STATUS_LABELS[item.status] }} · {{ item.created.slice(0, 10) }}
