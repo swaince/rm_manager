@@ -6,6 +6,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::error::{Error, Result};
+use crate::git;
 use crate::model::{Item, ItemEdit, ItemType, Priority, Progress, Space, Status, allowed_statuses};
 
 /// vault 目录：条目文件放 `items/` 子目录，一条目一 Markdown 文件。
@@ -44,11 +45,12 @@ struct Frontmatter {
 }
 
 impl Vault {
-    /// 打开 vault（目录不存在则创建）；索引是本地派生物，根 .gitignore 一并补上忽略项。
+    /// 打开 vault（目录不存在则创建）；没有 .git 就 git init（并补上缺失的提交身份），索引是本地派生物，根 .gitignore 一并补上忽略项。
     pub fn open(root: impl Into<PathBuf>) -> Result<Self> {
         let root = root.into();
         fs::create_dir_all(root.join("items"))?;
         ensure_gitignores_index(&root)?;
+        let _ = git::init_if_needed(&root); // git 缺失只影响留痕，不影响使用
         Ok(Self { root })
     }
 
@@ -95,6 +97,7 @@ impl Vault {
             self.items_dir().join(file_name(&item.id, &item.title)),
             render(&item)?,
         )?;
+        self.commit(&git::create_message(&item.id));
         Ok(item)
     }
 
@@ -138,6 +141,7 @@ impl Vault {
             fs::rename(&old_path, &new_path)?;
         }
         fs::write(&new_path, render(&item)?)?;
+        self.commit(&git::update_message(&item.id));
         Ok(item)
     }
 
@@ -155,9 +159,11 @@ impl Vault {
                 item.item_type
             )));
         }
+        let from = item.status;
         item.status = status;
         item.clear_status_extras();
         self.write_item(&item)?;
+        self.commit(&git::status_message(&item.id, from, item.status));
         Ok(item)
     }
 
@@ -173,11 +179,13 @@ impl Vault {
         if reason.is_empty() || waiting_on.is_empty() {
             return Err(Error::InvalidStatus("阻塞必须填写原因与等待对象".into()));
         }
-        item.blocked_from = Some(item.status);
+        let from = item.status;
+        item.blocked_from = Some(from);
         item.blocked_reason = Some(reason.to_string());
         item.blocked_waiting_on = Some(waiting_on.to_string());
         item.status = Status::Blocked;
         self.write_item(&item)?;
+        self.commit(&git::status_message(&item.id, from, item.status));
         Ok(item)
     }
 
@@ -187,6 +195,7 @@ impl Vault {
         if item.status != Status::Blocked {
             return Err(Error::InvalidStatus("条目当前未被阻塞".into()));
         }
+        let from = item.status;
         let restored = item.blocked_from.unwrap_or(item.item_type.default_status());
         item.status = if allowed_statuses(item.item_type).contains(&restored) {
             restored
@@ -197,6 +206,7 @@ impl Vault {
         item.blocked_waiting_on = None;
         item.blocked_from = None;
         self.write_item(&item)?;
+        self.commit(&git::status_message(&item.id, from, item.status));
         Ok(item)
     }
 
@@ -207,13 +217,21 @@ impl Vault {
         if reason.is_empty() {
             return Err(Error::InvalidStatus("放弃条目必须填写原因".into()));
         }
+        let from = item.status;
         item.status = Status::Dropped;
         item.dropped_reason = Some(reason.to_string());
         item.blocked_reason = None;
         item.blocked_waiting_on = None;
         item.blocked_from = None;
         self.write_item(&item)?;
+        self.commit(&git::status_message(&item.id, from, item.status));
         Ok(item)
+    }
+
+    /// 写盘后自动本地提交（消息格式见 `docs/sync-architecture.md` §4）；
+    /// git 不可用时不提交也不报错：留痕是附加能力，不能挡住保存。
+    fn commit(&self, message: &str) {
+        let _ = git::commit_all(&self.root, message);
     }
 
     fn read_item(&self, id: &str) -> Result<Item> {
@@ -265,6 +283,7 @@ impl Vault {
 
         child.parent = parent;
         fs::write(&path, render(&child)?)?;
+        self.commit(&git::parent_message(&child.id, child.parent.as_deref()));
         Ok(child)
     }
 
@@ -308,7 +327,7 @@ impl Vault {
     }
 
     /// 按 id 找现有条目文件：文件名形如 `ID.md` 或 `ID--标题.md`。
-    fn item_path(&self, id: &str) -> Result<PathBuf> {
+    pub(crate) fn item_path(&self, id: &str) -> Result<PathBuf> {
         for name in self.item_files()? {
             let Some(rest) = name.strip_prefix(id) else {
                 continue;

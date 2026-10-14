@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod error;
+pub mod git;
 pub mod index;
 pub mod model;
 pub mod vault;
@@ -60,6 +61,7 @@ pub fn run() {
             commands::drop_item,
             commands::set_parent,
             commands::children_of,
+            commands::item_timeline,
             commands::parent_progress
         ])
         .run(tauri::generate_context!())

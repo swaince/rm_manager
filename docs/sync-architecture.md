@@ -112,6 +112,7 @@ id 前缀与类型固定映射：`IDEA-` 想法 / `REQ-` 需求 / `BUG-` Bug / `
 - **git 用「调用系统 git 二进制」而非内嵌库**：两端都是 Windows、装了 Git for Windows 即可；系统 git 自带凭据管理、代理、证书处理，最省事。应用启动检测 `git --version`，缺失给引导。
   `shortcut: 依赖系统 git；升级路线是内嵌 gitoxide，免依赖但认证要自写——等真有非开发用户时再换。`
 - Windows 细节：子进程加 `CREATE_NO_WINDOW` 防黑框闪现；路径按 UTF-8 处理；仓库局部设 `core.autocrlf=false` + `.gitattributes` 强制 LF。
+- **本地留痕（P0-04）**：`Vault::open` 没有 `.git` 就 `git init`，并补仓库级 `user.name` / `user.email`（`rm-manager` / `rm-manager@local`，仅缺失时设置，不覆盖已有配置）；创建 / 编辑 / 状态变更 / 拆解各自动提交一条，消息格式见第 4 节。状态流转记录（进入时间 / 停留时长）由 `git log --follow --format=%aI|%s -- <条目文件>` 派生——`--follow` 让标题改名后的历史不断线；停留时长 = 相邻两次状态变更提交的间隔秒数，最近一次为空。git 不可用时保存照常成功，只是不留痕。
 - 索引用 rusqlite + FTS5（trigram 分词，中文子串可搜；3 字符以下的查询回退标题 + 正文子串扫描），落 `vault/.rm-index/index.db`，按文件 mtime+size+哈希增量重建，删掉 / 写坏都会自动全量重建；vault 路径可配置且建议放在纯本地盘（别放 OneDrive 目录，避免二次同步打架）。
 - **vault 路径来源**：应用启动时读 app config dir 下的 `config.json`（字段 `vault_path`）；无配置则用「用户文档目录/rm-vault」并把配置写回。暂无设置 UI（后续票补）。
 - 桌面形态正好把 Tauri 的全局快捷键（速记）、托盘、系统通知用起来。
