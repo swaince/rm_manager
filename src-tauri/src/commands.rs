@@ -100,3 +100,17 @@ pub fn children_of(vault: State<'_, Vault>, id: String) -> Result<Vec<Item>, Err
 pub fn parent_progress(vault: State<'_, Vault>, id: String) -> Result<Progress, Error> {
     vault.parent_progress(&id)
 }
+
+#[tauri::command]
+pub fn schedule_item(
+    vault: State<'_, Vault>,
+    id: String,
+    week: Option<String>,
+) -> Result<Item, Error> {
+    vault.schedule_item(&id, week.as_deref())
+}
+
+#[tauri::command]
+pub fn set_focus(vault: State<'_, Vault>, id: String, date: Option<String>) -> Result<Item, Error> {
+    vault.set_focus(&id, date.as_deref())
+}

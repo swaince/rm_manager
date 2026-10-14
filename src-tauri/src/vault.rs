@@ -40,6 +40,10 @@ struct Frontmatter {
     tags: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     parent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    scheduled_week: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    focus_on: Option<String>,
     created: String,
 }
 
@@ -88,6 +92,8 @@ impl Vault {
             tags: Vec::new(),
             due: None,
             parent: None,
+            scheduled_week: None,
+            focus_on: None,
             created: now.format(&Rfc3339)?,
             body: body.trim().to_string(),
         };
@@ -123,6 +129,8 @@ impl Vault {
             tags: cleaned_tags(&edit.tags),
             due: optional_text(edit.due.as_deref()),
             parent: old.parent,
+            scheduled_week: old.scheduled_week,
+            focus_on: old.focus_on,
             created: old.created,
             body: edit.body.trim().to_string(),
         };
@@ -268,6 +276,23 @@ impl Vault {
         Ok(child)
     }
 
+    /// 排期：排入某一周（week = 该周周一的日期，由调用方算好）或清空（None / 空白串）。
+    /// 日期串原样存储、不做格式校验（与 due 一致），格式由调用方保证。
+    pub fn schedule_item(&self, id: &str, week: Option<&str>) -> Result<Item> {
+        let mut item = self.read_item(id)?;
+        item.scheduled_week = optional_text(week);
+        self.write_item(&item)?;
+        Ok(item)
+    }
+
+    /// 今日焦点：把条目选进某天的焦点（date = `YYYY-MM-DD`）或清空（None / 空白串、空串）。
+    pub fn set_focus(&self, id: &str, date: Option<&str>) -> Result<Item> {
+        let mut item = self.read_item(id)?;
+        item.focus_on = optional_text(date);
+        self.write_item(&item)?;
+        Ok(item)
+    }
+
     /// 直接子条目（不递归孙辈），按 created 升序；同一秒创建时按 id 升序保证顺序稳定。
     pub fn children_of(&self, id: &str) -> Result<Vec<Item>> {
         let mut children: Vec<Item> = self
@@ -409,6 +434,8 @@ fn render(item: &Item) -> Result<String> {
         due: item.due.clone(),
         tags: item.tags.clone(),
         parent: item.parent.clone(),
+        scheduled_week: item.scheduled_week.clone(),
+        focus_on: item.focus_on.clone(),
         created: item.created.clone(),
     })?;
     Ok(format!("---\n{frontmatter}---\n\n{}\n", item.body))
@@ -440,6 +467,8 @@ pub(crate) fn parse_item(raw: &str) -> Result<Item> {
         tags: frontmatter.tags,
         due: frontmatter.due,
         parent: frontmatter.parent,
+        scheduled_week: frontmatter.scheduled_week,
+        focus_on: frontmatter.focus_on,
         created: frontmatter.created,
         body: body.trim().to_string(),
     })

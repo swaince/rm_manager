@@ -35,6 +35,10 @@ export interface Item {
   tags: string[]
   due: string | null
   parent: string | null
+  /** 排期：所排那周的周一日期（YYYY-MM-DD）；未排期为 null */
+  scheduled_week: string | null
+  /** 今日焦点：焦点当天日期（YYYY-MM-DD）；未选为 null */
+  focus_on: string | null
   created: string
   body: string
 }
@@ -243,4 +247,13 @@ export function childrenOf(id: string): Promise<Item[]> {
 
 export function parentProgress(id: string): Promise<Progress> {
   return invoke<Progress>('parent_progress', { id })
+}
+/** 排期：排入某一周（week = 该周周一日期）或取消（null），返回更新后的条目 */
+export function scheduleItem(id: string, week: string | null): Promise<Item> {
+  return invoke<Item>('schedule_item', { id, week })
+}
+
+/** 今日焦点：把条目选进某天的焦点（date = YYYY-MM-DD）或取消（null） */
+export function setFocus(id: string, date: string | null): Promise<Item> {
+  return invoke<Item>('set_focus', { id, date })
 }

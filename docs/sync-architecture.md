@@ -62,6 +62,8 @@ project: 内部报表平台
 priority: P1
 estimate: 3              # 理想人日；空 = 未估
 due: 2026-10-30
+scheduled_week: 2026-10-26 # 排期：所排那周的周一日期（YYYY-MM-DD）；空 = 未排周
+focus_on: 2026-10-14     # 今日焦点：焦点当天日期（YYYY-MM-DD）；空 = 未选（等于今天即入选）
 tags: [报表, 后端]
 parent: null             # 拆解子项 / 头脑风暴会话的想法
 links: [SPIKE-2026-0003]
