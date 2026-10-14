@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
 import ItemCreateDialog from '@/components/item/ItemCreateDialog.vue'
+import ItemEditDialog from '@/components/item/ItemEditDialog.vue'
 import { ITEM_TYPE_LABELS, STATUS_LABELS, SPACE_LABELS, listItems, type Item } from '@/apis/items'
 
 const items = ref<Item[]>([])
@@ -23,6 +24,12 @@ async function load() {
 }
 
 onMounted(load)
+
+/** 编辑对话框每次落盘都会回传最新条目，就地替换避免整表重载闪烁 */
+function onUpdated(updated: Item) {
+  const index = items.value.findIndex((item) => item.id === updated.id)
+  if (index !== -1) items.value[index] = updated
+}
 </script>
 
 <template>
@@ -58,12 +65,15 @@ onMounted(load)
     <ul v-else class="space-y-2">
       <li v-for="item in items" :key="item.id">
         <Card>
-          <CardContent class="flex flex-col gap-1">
-            <span class="font-medium">{{ item.title }}</span>
-            <span class="text-muted-foreground text-xs">
-              {{ item.id }} · {{ ITEM_TYPE_LABELS[item.type] }} · {{ SPACE_LABELS[item.space] }} ·
-              {{ STATUS_LABELS[item.status] }} · {{ item.created.slice(0, 10) }}
-            </span>
+          <CardContent class="flex items-center justify-between gap-3">
+            <div class="flex min-w-0 flex-col gap-1">
+              <span class="font-medium">{{ item.title }}</span>
+              <span class="text-muted-foreground text-xs">
+                {{ item.id }} · {{ ITEM_TYPE_LABELS[item.type] }} · {{ SPACE_LABELS[item.space] }} ·
+                {{ STATUS_LABELS[item.status] }} · {{ item.created.slice(0, 10) }}
+              </span>
+            </div>
+            <ItemEditDialog :item="item" @updated="onUpdated" />
           </CardContent>
         </Card>
       </li>

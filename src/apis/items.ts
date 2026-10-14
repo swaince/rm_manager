@@ -14,13 +14,19 @@ export type ItemStatus =
   | 'done'
   | 'dropped'
 
-/** 条目：属性来自文件 frontmatter，body 是 Markdown 正文 */
+export type ItemPriority = 'P0' | 'P1' | 'P2' | 'P3'
+
+/** 条目：属性来自文件 frontmatter，body 是 Markdown 正文；可选字段未设置为 null / 空数组 */
 export interface Item {
   id: string
   type: ItemType
   title: string
   status: ItemStatus
   space: Space
+  project: string | null
+  priority: ItemPriority | null
+  tags: string[]
+  due: string | null
   created: string
   body: string
 }
@@ -30,6 +36,18 @@ export interface ItemDraft {
   title: string
   type: ItemType
   space: Space
+  body: string
+}
+
+/** 编辑载荷 = 完整可编辑状态（清空 = null / 空数组）；id / status / created 不可编辑 */
+export interface ItemEdit {
+  title: string
+  type: ItemType
+  space: Space
+  project: string | null
+  priority: ItemPriority | null
+  tags: string[]
+  due: string | null
   body: string
 }
 
@@ -43,6 +61,8 @@ export const ITEM_TYPES: readonly ItemType[] = [
 ]
 
 export const SPACES: readonly Space[] = ['work', 'personal']
+
+export const PRIORITIES: readonly ItemPriority[] = ['P0', 'P1', 'P2', 'P3']
 
 export const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   idea: '想法',
@@ -83,4 +103,8 @@ export function createItem(draft: ItemDraft): Promise<Item> {
     space: draft.space,
     body: draft.body,
   })
+}
+
+export function updateItem(id: string, edit: ItemEdit): Promise<Item> {
+  return invoke<Item>('update_item', { id, edit })
 }

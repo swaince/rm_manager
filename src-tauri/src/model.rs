@@ -60,6 +60,39 @@ pub struct Item {
     pub title: String,
     pub status: Status,
     pub space: Space,
+    /// 可选属性：未设置即 None / 空集合，frontmatter 不写对应的键
+    pub project: Option<String>,
+    pub priority: Option<Priority>,
+    pub tags: Vec<String>,
+    pub due: Option<String>,
     pub created: String,
     pub body: String,
+}
+
+/// 优先级：人工判定的 P0–P3 等级，frontmatter 序列化为 `P0`–`P3`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Priority {
+    P0,
+    P1,
+    P2,
+    P3,
+}
+
+/// 编辑载荷：条目的完整可编辑状态，清空 = None / 空集合；
+/// id / status / created 不在可编辑范围内，由核心保持原值。
+#[derive(Debug, Clone, Deserialize)]
+pub struct ItemEdit {
+    pub title: String,
+    #[serde(rename = "type")]
+    pub item_type: ItemType,
+    pub space: Space,
+    pub body: String,
+    #[serde(default)]
+    pub project: Option<String>,
+    #[serde(default)]
+    pub priority: Option<Priority>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub due: Option<String>,
 }

@@ -6,14 +6,14 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::error::{Error, Result};
-use crate::model::{Item, ItemType, Space, Status};
+use crate::model::{Item, ItemEdit, ItemType, Priority, Space, Status};
 
 /// vault 目录：条目文件放 `items/` 子目录，一条目一 Markdown 文件。
 pub struct Vault {
     root: PathBuf,
 }
 
-/// 磁盘上的 frontmatter 形态；P0-01 只写最小字段集，其余字段后续票补。
+/// 磁盘上的 frontmatter 形态：可选字段未设置时不写对应的键。
 #[derive(Serialize, Deserialize)]
 struct Frontmatter {
     id: String,
@@ -22,6 +22,14 @@ struct Frontmatter {
     title: String,
     status: Status,
     space: Space,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    project: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    priority: Option<Priority>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    due: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    tags: Vec<String>,
     created: String,
 }
 
@@ -56,22 +64,49 @@ impl Vault {
             title: title.to_string(),
             status: Status::Inbox,
             space,
+            project: None,
+            priority: None,
+            tags: Vec::new(),
+            due: None,
             created: now.format(&Rfc3339)?,
             body: body.trim().to_string(),
         };
-        let frontmatter = serde_norway::to_string(&Frontmatter {
-            id: item.id.clone(),
-            item_type: item.item_type,
-            title: item.title.clone(),
-            status: item.status,
-            space: item.space,
-            created: item.created.clone(),
-        })?;
-        let content = format!("---\n{frontmatter}---\n\n{}\n", item.body);
         fs::write(
             self.items_dir().join(file_name(&item.id, &item.title)),
-            content,
+            render(&item)?,
         )?;
+        Ok(item)
+    }
+
+    /// 更新条目：接收完整可编辑状态（清空 = None / 空集合），id / status / created 保持原值；
+    /// 标题变化时同步重命名文件（id 不变，不会与其他条目撞名）。
+    pub fn update_item(&self, id: &str, edit: &ItemEdit) -> Result<Item> {
+        let title = edit.title.trim();
+        if title.is_empty() {
+            return Err(Error::InvalidTitle);
+        }
+        let old_path = self.item_path(id)?;
+        let old = parse_item(&fs::read_to_string(&old_path)?)?;
+
+        let item = Item {
+            id: old.id,
+            item_type: edit.item_type,
+            title: title.to_string(),
+            status: old.status,
+            space: edit.space,
+            project: optional_text(edit.project.as_deref()),
+            priority: edit.priority,
+            tags: cleaned_tags(&edit.tags),
+            due: optional_text(edit.due.as_deref()),
+            created: old.created,
+            body: edit.body.trim().to_string(),
+        };
+
+        let new_path = self.items_dir().join(file_name(&item.id, &item.title));
+        if new_path != old_path {
+            fs::rename(&old_path, &new_path)?;
+        }
+        fs::write(&new_path, render(&item)?)?;
         Ok(item)
     }
 
@@ -86,6 +121,19 @@ impl Vault {
         }
         items.sort_by(|a, b| b.created.cmp(&a.created).then_with(|| b.id.cmp(&a.id)));
         Ok(items)
+    }
+
+    /// 按 id 找现有条目文件：文件名形如 `ID.md` 或 `ID--标题.md`。
+    fn item_path(&self, id: &str) -> Result<PathBuf> {
+        for name in self.item_files()? {
+            let Some(rest) = name.strip_prefix(id) else {
+                continue;
+            };
+            if rest == ".md" || (rest.starts_with("--") && rest.ends_with(".md")) {
+                return Ok(self.items_dir().join(name));
+            }
+        }
+        Err(Error::ItemNotFound(id.to_string()))
     }
 
     /// id 规则 `TYPE-YYYY-NNNN`：取该类型现有文件的最大序号 +1（跨年份取全局最大，保证不撞号）。
@@ -137,6 +185,23 @@ fn is_illegal_in_file_name(c: char) -> bool {
     c.is_control() || matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
 }
 
+/// 渲染条目文件内容：frontmatter + 正文。
+fn render(item: &Item) -> Result<String> {
+    let frontmatter = serde_norway::to_string(&Frontmatter {
+        id: item.id.clone(),
+        item_type: item.item_type,
+        title: item.title.clone(),
+        status: item.status,
+        space: item.space,
+        project: item.project.clone(),
+        priority: item.priority,
+        due: item.due.clone(),
+        tags: item.tags.clone(),
+        created: item.created.clone(),
+    })?;
+    Ok(format!("---\n{frontmatter}---\n\n{}\n", item.body))
+}
+
 fn parse_item(raw: &str) -> Result<Item> {
     // 手工编辑的文件可能是 CRLF，统一成 LF 再解析
     let raw = raw.replace("\r\n", "\n");
@@ -153,7 +218,28 @@ fn parse_item(raw: &str) -> Result<Item> {
         title: frontmatter.title,
         status: frontmatter.status,
         space: frontmatter.space,
+        project: frontmatter.project,
+        priority: frontmatter.priority,
+        tags: frontmatter.tags,
+        due: frontmatter.due,
         created: frontmatter.created,
         body: body.trim().to_string(),
     })
+}
+
+/// 可选文本字段：trim 后为空视为「清空」，写盘时省略该键。
+fn optional_text(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_string)
+}
+
+/// 标签去掉空白项并保持原顺序；全空 = 空集合，写盘时省略该键。
+fn cleaned_tags(tags: &[String]) -> Vec<String> {
+    tags.iter()
+        .map(|tag| tag.trim())
+        .filter(|tag| !tag.is_empty())
+        .map(str::to_string)
+        .collect()
 }

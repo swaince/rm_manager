@@ -1,7 +1,7 @@
 use tauri::State;
 
 use crate::error::Error;
-use crate::model::{Item, ItemType, Space};
+use crate::model::{Item, ItemEdit, ItemType, Space};
 use crate::vault::Vault;
 
 // 命令层是薄胶水：只透传参数，业务在 vault / model 里。
@@ -15,6 +15,11 @@ pub fn create_item(
     body: String,
 ) -> Result<Item, Error> {
     vault.create_item(&title, item_type, space, &body)
+}
+
+#[tauri::command]
+pub fn update_item(vault: State<'_, Vault>, id: String, edit: ItemEdit) -> Result<Item, Error> {
+    vault.update_item(&id, &edit)
 }
 
 #[tauri::command]
