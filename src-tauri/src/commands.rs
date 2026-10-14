@@ -83,6 +83,12 @@ pub fn drop_item(vault: State<'_, Vault>, id: String, reason: String) -> Result<
     vault.drop_item(&id, &reason)
 }
 
+/// 豁免就绪检查：理由必填并留痕。
+#[tauri::command]
+pub fn waive_dor(vault: State<'_, Vault>, id: String, reason: String) -> Result<Item, Error> {
+    vault.waive_dor(&id, &reason)
+}
+
 #[tauri::command]
 pub fn set_parent(
     vault: State<'_, Vault>,

@@ -19,6 +19,22 @@ export type ItemStatus =
 
 export type ItemPriority = 'P0' | 'P1' | 'P2' | 'P3'
 
+/** 估算三档预算；人日 / 点数只是展示口径（见 lib/estimate.ts），不落盘 */
+export type ItemEstimate = 'small' | 'medium' | 'large'
+
+/** 验收标准 checklist 的一项 */
+export interface AcceptanceCriterion {
+  text: string
+  done: boolean
+}
+
+/** 澄清记录：answer 为空即待答复；source 是来源人 */
+export interface Clarification {
+  question: string
+  answer: string | null
+  source: string | null
+}
+
 /** 条目：属性来自文件 frontmatter，body 是 Markdown 正文；可选字段未设置为 null / 空数组 */
 export interface Item {
   id: string
@@ -39,6 +55,11 @@ export interface Item {
   scheduled_week: string | null
   /** 今日焦点：焦点当天日期（YYYY-MM-DD）；未选为 null */
   focus_on: string | null
+  estimate: ItemEstimate | null
+  acceptance: AcceptanceCriterion[]
+  clarifications: Clarification[]
+  /** 就绪检查豁免理由；未豁免为 null */
+  dor_waived: string | null
   created: string
   body: string
 }
@@ -57,7 +78,7 @@ export interface ItemDraft {
   body: string
 }
 
-/** 编辑载荷 = 完整可编辑状态（清空 = null / 空数组）；id / status / created 不可编辑 */
+/** 编辑载荷 = 完整可编辑状态（清空 = null / 空数组）；id / status / created / dor_waived 不可编辑 */
 export interface ItemEdit {
   title: string
   type: ItemType
@@ -66,6 +87,9 @@ export interface ItemEdit {
   priority: ItemPriority | null
   tags: string[]
   due: string | null
+  estimate: ItemEstimate | null
+  acceptance: AcceptanceCriterion[]
+  clarifications: Clarification[]
   body: string
 }
 
@@ -81,6 +105,9 @@ export const ITEM_TYPES: readonly ItemType[] = [
 export const SPACES: readonly Space[] = ['work', 'personal']
 
 export const PRIORITIES: readonly ItemPriority[] = ['P0', 'P1', 'P2', 'P3']
+
+/** 估算三档，顺序 = 小 → 大 */
+export const ESTIMATES: readonly ItemEstimate[] = ['small', 'medium', 'large']
 
 export const STATUSES: readonly ItemStatus[] = [
   'inbox',
@@ -234,6 +261,11 @@ export function unblockItem(id: string): Promise<Item> {
 
 export function dropItem(id: string, reason: string): Promise<Item> {
   return invoke<Item>('drop_item', { id, reason })
+}
+
+/** 豁免就绪检查（FR-4.3）：理由必填并写进 frontmatter 留痕；豁免后该需求可进 ready */
+export function waiveDor(id: string, reason: string): Promise<Item> {
+  return invoke<Item>('waive_dor', { id, reason })
 }
 
 /** 拆解：给子条目设置 / 清空父条目（null 清空），返回更新后的条目 */

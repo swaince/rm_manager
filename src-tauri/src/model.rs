@@ -150,6 +150,18 @@ pub struct Item {
     pub focus_on: Option<String>,
     pub created: String,
     pub body: String,
+    /// 细化（FR-4.5）：估算三档；人日 / 点数只是展示口径，由前端设置决定，不进 vault
+    #[serde(default)]
+    pub estimate: Option<Estimate>,
+    /// 验收标准 checklist（FR-4.1）；空集合 = 未写
+    #[serde(default)]
+    pub acceptance: Vec<AcceptanceCriterion>,
+    /// 澄清记录（FR-4.4）；answer 为空即待答复
+    #[serde(default)]
+    pub clarifications: Vec<Clarification>,
+    /// 就绪检查豁免理由（FR-4.3）；已豁免的需求进 ready 免检，理由留痕
+    #[serde(default)]
+    pub dor_waived: Option<String>,
 }
 
 impl Item {
@@ -188,6 +200,12 @@ pub struct ItemEdit {
     pub tags: Vec<String>,
     #[serde(default)]
     pub due: Option<String>,
+    #[serde(default)]
+    pub estimate: Option<Estimate>,
+    #[serde(default)]
+    pub acceptance: Vec<AcceptanceCriterion>,
+    #[serde(default)]
+    pub clarifications: Vec<Clarification>,
 }
 
 /// 父项聚合进度：total = 未 dropped 的直接子项数，done = 其中 status=done 的数量。
@@ -195,4 +213,31 @@ pub struct ItemEdit {
 pub struct Progress {
     pub done: usize,
     pub total: usize,
+}
+
+/// 估算：三档预算（FR-4.5）；人日 / 点数是展示口径，不进 vault。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Estimate {
+    Small,
+    Medium,
+    Large,
+}
+
+/// 验收标准：checklist 的一项；done 未写时默认未勾选。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AcceptanceCriterion {
+    pub text: String,
+    #[serde(default)]
+    pub done: bool,
+}
+
+/// 澄清记录（FR-4.4）：question 必填；answer 为空即待答复。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Clarification {
+    pub question: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }

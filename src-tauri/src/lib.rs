@@ -59,6 +59,7 @@ pub fn run() {
             commands::block_item,
             commands::unblock_item,
             commands::drop_item,
+            commands::waive_dor,
             commands::set_parent,
             commands::children_of,
             commands::item_timeline,

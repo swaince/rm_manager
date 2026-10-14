@@ -60,7 +60,15 @@ dropped_reason: 需求已过时     # 仅 dropped：必填
 space: work              # work | personal
 project: 内部报表平台
 priority: P1
-estimate: 3              # 理想人日；空 = 未估
+estimate: medium         # 估算三档 small | medium | large；空 = 未估（人日 / 点数只是展示口径）
+acceptance:              # 验收标准 checklist（FR-4.1）；空 = 未写
+- text: 导出 1000 行不超过 5 秒
+  done: true
+clarifications:          # 澄清记录（FR-4.4）；answer 空 = 待答复
+- question: 历史数据要不要一起迁移
+  answer: 只迁近一年
+  source: 产品
+dor_waived: 本季度先做     # 就绪检查豁免理由（FR-4.3）；仅豁免过的条目才有
 due: 2026-10-30
 scheduled_week: 2026-10-26 # 排期：所排那周的周一日期（YYYY-MM-DD）；空 = 未排周
 focus_on: 2026-10-14     # 今日焦点：焦点当天日期（YYYY-MM-DD）；空 = 未选（等于今天即入选）

@@ -7,7 +7,10 @@ use time::format_description::well_known::Rfc3339;
 
 use crate::error::{Error, Result};
 use crate::git;
-use crate::model::{Item, ItemEdit, ItemType, Priority, Progress, Space, Status, allowed_statuses};
+use crate::model::{
+    AcceptanceCriterion, Clarification, Estimate, Item, ItemEdit, ItemType, Priority, Progress,
+    Space, Status, allowed_statuses,
+};
 
 /// vault 目录：条目文件放 `items/` 子目录，一条目一 Markdown 文件。
 pub struct Vault {
@@ -45,6 +48,14 @@ struct Frontmatter {
     scheduled_week: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     focus_on: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    estimate: Option<Estimate>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    acceptance: Vec<AcceptanceCriterion>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    clarifications: Vec<Clarification>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    dor_waived: Option<String>,
     created: String,
 }
 
@@ -96,6 +107,10 @@ impl Vault {
             parent: None,
             scheduled_week: None,
             focus_on: None,
+            estimate: None,
+            acceptance: Vec::new(),
+            clarifications: Vec::new(),
+            dor_waived: None,
             created: now.format(&Rfc3339)?,
             body: body.trim().to_string(),
         };
@@ -134,6 +149,11 @@ impl Vault {
             parent: old.parent,
             scheduled_week: old.scheduled_week,
             focus_on: old.focus_on,
+            estimate: edit.estimate,
+            acceptance: cleaned_acceptance(&edit.acceptance),
+            clarifications: cleaned_clarifications(&edit.clarifications),
+            // 豁免理由只能由 waive_dor 写入与留痕，编辑正文不重置
+            dor_waived: old.dor_waived,
             created: old.created,
             body: edit.body.trim().to_string(),
         };
@@ -153,7 +173,8 @@ impl Vault {
         Ok(item)
     }
 
-    /// 改状态：目标必须是该类型允许集合内且非旁路状态（blocked / dropped 走专门动作）。
+    /// 改状态：目标必须是该类型允许集合内且非旁路状态（blocked / dropped 走专门动作）；
+    /// 需求进 ready 还要过就绪检查（FR-4.3），豁免过的放行。
     pub fn set_status(&self, id: &str, status: Status) -> Result<Item> {
         let mut item = self.read_item(id)?;
         if matches!(status, Status::Blocked | Status::Dropped) {
@@ -168,10 +189,40 @@ impl Vault {
             )));
         }
         let from = item.status;
+        if item.item_type == ItemType::Requirement
+            && status == Status::Ready
+            && item.dor_waived.is_none()
+        {
+            let gaps = dor_gaps_of(&item);
+            if !gaps.is_empty() {
+                return Err(Error::InvalidStatus(format!(
+                    "就绪检查未通过：{}",
+                    gaps.join("；")
+                )));
+            }
+        }
         item.status = status;
         item.clear_status_extras();
         self.write_item(&item)?;
         self.commit(&git::status_message(&item.id, from, item.status));
+        Ok(item)
+    }
+
+    /// 就绪检查（FR-4.3）未满足项，按 验收标准 → 估算 → 澄清 固定顺序；空 = 可进 ready。
+    pub fn dor_gaps(&self, id: &str) -> Result<Vec<String>> {
+        Ok(dor_gaps_of(&self.read_item(id)?))
+    }
+
+    /// 豁免就绪检查：理由必填，写入 frontmatter 留痕；豁免后该需求进 ready 免检。
+    pub fn waive_dor(&self, id: &str, reason: &str) -> Result<Item> {
+        let mut item = self.read_item(id)?;
+        let reason = reason.trim();
+        if reason.is_empty() {
+            return Err(Error::InvalidStatus("豁免就绪检查必须填写理由".into()));
+        }
+        item.dor_waived = Some(reason.to_string());
+        self.write_item(&item)?;
+        self.commit(&git::update_message(&item.id));
         Ok(item)
     }
 
@@ -301,6 +352,7 @@ impl Vault {
         let mut item = self.read_item(id)?;
         item.scheduled_week = optional_text(week);
         self.write_item(&item)?;
+        self.commit(&git::update_message(&item.id));
         Ok(item)
     }
 
@@ -309,6 +361,7 @@ impl Vault {
         let mut item = self.read_item(id)?;
         item.focus_on = optional_text(date);
         self.write_item(&item)?;
+        self.commit(&git::update_message(&item.id));
         Ok(item)
     }
 
@@ -455,6 +508,10 @@ fn render(item: &Item) -> Result<String> {
         parent: item.parent.clone(),
         scheduled_week: item.scheduled_week.clone(),
         focus_on: item.focus_on.clone(),
+        estimate: item.estimate,
+        acceptance: item.acceptance.clone(),
+        clarifications: item.clarifications.clone(),
+        dor_waived: item.dor_waived.clone(),
         created: item.created.clone(),
     })?;
     Ok(format!("---\n{frontmatter}---\n\n{}\n", item.body))
@@ -488,6 +545,10 @@ pub(crate) fn parse_item(raw: &str) -> Result<Item> {
         parent: frontmatter.parent,
         scheduled_week: frontmatter.scheduled_week,
         focus_on: frontmatter.focus_on,
+        estimate: frontmatter.estimate,
+        acceptance: frontmatter.acceptance,
+        clarifications: frontmatter.clarifications,
+        dor_waived: frontmatter.dor_waived,
         created: frontmatter.created,
         body: body.trim().to_string(),
     })
@@ -507,5 +568,69 @@ fn cleaned_tags(tags: &[String]) -> Vec<String> {
         .map(|tag| tag.trim())
         .filter(|tag| !tag.is_empty())
         .map(str::to_string)
+        .collect()
+}
+
+/// 就绪检查（FR-4.3）未满足项，按 验收标准 → 估算 → 澄清 固定顺序。
+fn dor_gaps_of(item: &Item) -> Vec<String> {
+    let mut gaps = Vec::new();
+    if item.acceptance.is_empty() {
+        gaps.push("验收标准未填写".to_string());
+    } else {
+        let undone = item
+            .acceptance
+            .iter()
+            .filter(|criterion| !criterion.done)
+            .count();
+        if undone > 0 {
+            gaps.push(format!("验收标准还有 {undone} 条未勾选"));
+        }
+    }
+    if item.estimate.is_none() {
+        gaps.push("未估算".to_string());
+    }
+    let unanswered = item
+        .clarifications
+        .iter()
+        .filter(|clarification| clarification.answer.is_none())
+        .count();
+    if unanswered > 0 {
+        gaps.push(format!("澄清问题还有 {unanswered} 条待答复"));
+    }
+    gaps
+}
+
+/// 验收标准：空白文本项丢掉，其余 trim；全空 = 空集合，写盘时省略该键。
+fn cleaned_acceptance(criteria: &[AcceptanceCriterion]) -> Vec<AcceptanceCriterion> {
+    criteria
+        .iter()
+        .filter_map(|criterion| {
+            let text = criterion.text.trim();
+            if text.is_empty() {
+                return None;
+            }
+            Some(AcceptanceCriterion {
+                text: text.to_string(),
+                done: criterion.done,
+            })
+        })
+        .collect()
+}
+
+/// 澄清记录：空白问题项丢掉，答复与来源人 trim 后为空即「未填」。
+fn cleaned_clarifications(clarifications: &[Clarification]) -> Vec<Clarification> {
+    clarifications
+        .iter()
+        .filter_map(|clarification| {
+            let question = clarification.question.trim();
+            if question.is_empty() {
+                return None;
+            }
+            Some(Clarification {
+                question: question.to_string(),
+                answer: optional_text(clarification.answer.as_deref()),
+                source: optional_text(clarification.source.as_deref()),
+            })
+        })
         .collect()
 }
