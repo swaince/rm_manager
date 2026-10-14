@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useDebounceFn } from '@vueuse/core'
+import { listen } from '@tauri-apps/api/event'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -18,6 +19,7 @@ import { FormField, MultiSelect, SelectField, TextInput } from '@/components/for
 import { DatePicker } from '@/components/date-time'
 import ItemCreateDialog from '@/components/item/ItemCreateDialog.vue'
 import ItemEditDialog from '@/components/item/ItemEditDialog.vue'
+import { ITEMS_CHANGED } from '@/lib/capture'
 import {
   ITEM_TYPE_LABELS,
   ITEM_TYPES,
@@ -69,6 +71,9 @@ const saveOpen = ref(false)
 const viewName = ref('')
 const saveError = ref('')
 const rebuilding = ref(false)
+
+/** 条目变更事件（速记 / 收割）的监听句柄 */
+let unlisten: (() => void) | undefined
 
 const typeOptions = ITEM_TYPES.map((value) => ({ value, label: ITEM_TYPE_LABELS[value] }))
 const statusOptions = STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }))
@@ -211,7 +216,11 @@ async function rebuild() {
 
 onMounted(async () => {
   await Promise.all([load(), loadViews()])
+  // 速记窗 / 剪贴板收割落盘后刷新当前查询
+  unlisten = await listen(ITEMS_CHANGED, () => void load())
 })
+
+onUnmounted(() => unlisten?.())
 
 /** 编辑对话框每次落盘都会回传最新条目，就地替换避免整表重载闪烁 */
 function onUpdated(updated: Item) {
@@ -222,7 +231,7 @@ function onUpdated(updated: Item) {
 </script>
 
 <template>
-  <main class="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 p-8">
+  <main class="mx-auto flex w-full max-w-3xl flex-col gap-6 p-8 pt-4">
     <header class="flex items-start justify-between gap-4">
       <div>
         <h1 class="text-xl font-semibold">条目</h1>

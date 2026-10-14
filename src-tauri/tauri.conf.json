@@ -15,6 +15,19 @@
         "title": "rm-manager",
         "width": 800,
         "height": 600
+      },
+      {
+        "label": "capture",
+        "title": "速记",
+        "url": "index.html?capture=1",
+        "width": 480,
+        "height": 300,
+        "resizable": false,
+        "center": true,
+        "visible": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true
       }
     ],
     "security": {
