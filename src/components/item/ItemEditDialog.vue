@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogClose,
+  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -21,11 +22,18 @@ import {
   SPACE_LABELS,
   SPACES,
   updateItem,
+  setStatus,
+  blockItem,
+  unblockItem,
+  dropItem,
+  ALLOWED_STATUSES,
+  STATUS_LABELS,
   type Item,
   type ItemEdit,
   type ItemPriority,
   type ItemType,
   type Space,
+  type ItemStatus,
 } from '@/apis/items'
 
 const props = defineProps<{ item: Item }>()
@@ -49,6 +57,15 @@ const priority = ref<ItemPriority | ''>('')
 const tagsText = ref('')
 const due = ref('')
 const body = ref('')
+const status = ref<ItemStatus>('inbox')
+
+/** 旁路动作对话框：阻塞 / 放弃都要收集必填原因 */
+const actionOpen = ref(false)
+const action = ref<'block' | 'drop'>('block')
+const reasonText = ref('')
+const waitingOnText = ref('')
+const actionError = ref('')
+const actionSaving = ref(false)
 
 /** 最近一次成功落盘的载荷，用来判断有没有未保存的改动 */
 const savedPayload = ref('')
@@ -56,6 +73,19 @@ const savedPayload = ref('')
 const typeOptions = ITEM_TYPES.map((value) => ({ value, label: ITEM_TYPE_LABELS[value] }))
 const spaceOptions = SPACES.map((value) => ({ value, label: SPACE_LABELS[value] }))
 const priorityOptions = PRIORITIES.map((value) => ({ value, label: value }))
+// 只列当前类型允许的状态；blocked / dropped 只展示、不可选，走旁路动作
+const statusOptions = computed(() =>
+  ALLOWED_STATUSES[props.item.type].map((value) => ({
+    value,
+    label: STATUS_LABELS[value],
+    disabled: value === 'blocked' || value === 'dropped',
+  })),
+)
+const actionValid = computed(
+  () =>
+    reasonText.value.trim() !== '' &&
+    (action.value === 'drop' || waitingOnText.value.trim() !== ''),
+)
 const titleError = computed(() => (title.value.trim() ? undefined : '标题不能为空'))
 
 function payload(): ItemEdit {
@@ -85,6 +115,9 @@ function hydrate(item: Item) {
   due.value = item.due ?? ''
   body.value = item.body
   savedPayload.value = JSON.stringify(payload())
+  status.value = item.status
+  actionOpen.value = false
+  actionError.value = ''
   errorMessage.value = ''
 }
 
@@ -97,6 +130,8 @@ async function save() {
     const edit = payload()
     const saved = await updateItem(props.item.id, edit)
     savedPayload.value = JSON.stringify(edit)
+    // 改类型可能让核心把状态重置为默认值，以落盘结果为准
+    status.value = saved.status
     emit('updated', saved)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : String(error)
@@ -126,6 +161,57 @@ function selectSpace(value: string) {
 
 function selectPriority(value: string) {
   priority.value = value as ItemPriority | ''
+}
+
+async function selectStatus(value: string) {
+  const next = value as ItemStatus
+  if (!next || next === status.value) return
+  errorMessage.value = ''
+  try {
+    const saved = await setStatus(props.item.id, next)
+    status.value = saved.status
+    emit('updated', saved)
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : String(error)
+  }
+}
+
+async function unblock() {
+  errorMessage.value = ''
+  try {
+    const saved = await unblockItem(props.item.id)
+    status.value = saved.status
+    emit('updated', saved)
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : String(error)
+  }
+}
+
+function openAction(kind: 'block' | 'drop') {
+  action.value = kind
+  reasonText.value = ''
+  waitingOnText.value = ''
+  actionError.value = ''
+  actionOpen.value = true
+}
+
+async function confirmAction() {
+  if (!actionValid.value) return
+  actionSaving.value = true
+  actionError.value = ''
+  try {
+    const saved =
+      action.value === 'block'
+        ? await blockItem(props.item.id, reasonText.value, waitingOnText.value)
+        : await dropItem(props.item.id, reasonText.value)
+    status.value = saved.status
+    actionOpen.value = false
+    emit('updated', saved)
+  } catch (error) {
+    actionError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    actionSaving.value = false
+  }
 }
 </script>
 
@@ -167,6 +253,20 @@ function selectPriority(value: string) {
                 :described-by="describedBy"
                 :clearable="false"
                 @update:model-value="selectType"
+              />
+            </template>
+          </FormField>
+
+          <FormField label="状态" hint="可自由跳转；阻塞 / 放弃用下面的旁路动作">
+            <template #default="{ id, invalid, describedBy }">
+              <SelectField
+                :id="id"
+                :model-value="status"
+                :options="statusOptions"
+                :invalid="invalid"
+                :described-by="describedBy"
+                :clearable="false"
+                @update:model-value="selectStatus"
               />
             </template>
           </FormField>
@@ -228,6 +328,43 @@ function selectPriority(value: string) {
           </FormField>
         </div>
 
+        <div class="flex flex-wrap items-center gap-2">
+          <Button
+            v-if="status === 'blocked'"
+            type="button"
+            variant="outline"
+            size="sm"
+            @click="unblock"
+          >
+            解除阻塞
+          </Button>
+          <Button
+            v-else-if="status !== 'dropped'"
+            type="button"
+            variant="outline"
+            size="sm"
+            @click="openAction('block')"
+          >
+            阻塞
+          </Button>
+          <Button
+            v-if="status !== 'dropped'"
+            type="button"
+            variant="outline"
+            size="sm"
+            @click="openAction('drop')"
+          >
+            放弃
+          </Button>
+        </div>
+
+        <p v-if="status === 'blocked'" class="text-muted-foreground text-xs">
+          阻塞原因：{{ item.blocked_reason }} · 等待：{{ item.blocked_waiting_on }}
+        </p>
+        <p v-else-if="status === 'dropped'" class="text-muted-foreground text-xs">
+          放弃原因：{{ item.dropped_reason }}
+        </p>
+
         <FormField label="正文" hint="Markdown">
           <template #default="{ id, describedBy }">
             <TextArea
@@ -250,5 +387,54 @@ function selectPriority(value: string) {
         </DialogClose>
       </DialogFooter>
     </DialogScrollContent>
+    <Dialog v-model:open="actionOpen">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{{ action === 'block' ? '阻塞条目' : '放弃条目' }}</DialogTitle>
+          <DialogDescription>
+            {{
+              action === 'block'
+                ? '阻塞必须填写原因与等待对象；解除阻塞后回到原状态。'
+                : '放弃必须填写原因。'
+            }}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="space-y-4">
+          <FormField label="原因" required>
+            <template #default="{ id, describedBy }">
+              <TextInput
+                :id="id"
+                v-model="reasonText"
+                :described-by="describedBy"
+                :placeholder="action === 'block' ? '如：等运维开通账号' : '如：需求已过时'"
+              />
+            </template>
+          </FormField>
+
+          <FormField v-if="action === 'block'" label="等待对象" required hint="谁或什么在挡着">
+            <template #default="{ id, describedBy }">
+              <TextInput
+                :id="id"
+                v-model="waitingOnText"
+                :described-by="describedBy"
+                placeholder="如：运维组"
+              />
+            </template>
+          </FormField>
+
+          <p v-if="actionError" class="text-destructive text-sm" role="alert">{{ actionError }}</p>
+        </div>
+
+        <DialogFooter>
+          <DialogClose as-child>
+            <Button type="button" variant="outline">取消</Button>
+          </DialogClose>
+          <Button type="button" :disabled="actionSaving || !actionValid" @click="confirmAction">
+            {{ action === 'block' ? '阻塞' : '放弃' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </Dialog>
 </template>

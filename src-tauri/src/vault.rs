@@ -6,7 +6,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::error::{Error, Result};
-use crate::model::{Item, ItemEdit, ItemType, Priority, Space, Status};
+use crate::model::{Item, ItemEdit, ItemType, Priority, Space, Status, allowed_statuses};
 
 /// vault 目录：条目文件放 `items/` 子目录，一条目一 Markdown 文件。
 pub struct Vault {
@@ -21,6 +21,14 @@ struct Frontmatter {
     item_type: ItemType,
     title: String,
     status: Status,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    blocked_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    blocked_waiting_on: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    blocked_from: Option<Status>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    dropped_reason: Option<String>,
     space: Space,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     project: Option<String>,
@@ -50,7 +58,7 @@ impl Vault {
         self.root.join("items")
     }
 
-    /// 新建条目：生成 id、写盘，返回内存模型（默认 status=inbox）。
+    /// 新建条目：生成 id、写盘，返回内存模型（状态按类型取默认值）。
     pub fn create_item(
         &self,
         title: &str,
@@ -67,7 +75,11 @@ impl Vault {
             id: self.next_id(item_type, now.year())?,
             item_type,
             title: title.to_string(),
-            status: Status::Inbox,
+            status: item_type.default_status(),
+            blocked_reason: None,
+            blocked_waiting_on: None,
+            blocked_from: None,
+            dropped_reason: None,
             space,
             project: None,
             priority: None,
@@ -93,11 +105,15 @@ impl Vault {
         let old_path = self.item_path(id)?;
         let old = parse_item(&fs::read_to_string(&old_path)?)?;
 
-        let item = Item {
+        let mut item = Item {
             id: old.id,
             item_type: edit.item_type,
             title: title.to_string(),
             status: old.status,
+            blocked_reason: old.blocked_reason,
+            blocked_waiting_on: old.blocked_waiting_on,
+            blocked_from: old.blocked_from,
+            dropped_reason: old.dropped_reason,
             space: edit.space,
             project: optional_text(edit.project.as_deref()),
             priority: edit.priority,
@@ -107,12 +123,106 @@ impl Vault {
             body: edit.body.trim().to_string(),
         };
 
+        // 改类型后旧状态可能不在新类型的集合里：回到新类型默认状态并清掉旁路字段
+        if !allowed_statuses(item.item_type).contains(&item.status) {
+            item.status = item.item_type.default_status();
+            item.clear_status_extras();
+        }
+
         let new_path = self.items_dir().join(file_name(&item.id, &item.title));
         if new_path != old_path {
             fs::rename(&old_path, &new_path)?;
         }
         fs::write(&new_path, render(&item)?)?;
         Ok(item)
+    }
+
+    /// 改状态：目标必须是该类型允许集合内且非旁路状态（blocked / dropped 走专门动作）。
+    pub fn set_status(&self, id: &str, status: Status) -> Result<Item> {
+        let mut item = self.read_item(id)?;
+        if matches!(status, Status::Blocked | Status::Dropped) {
+            return Err(Error::InvalidStatus(
+                "阻塞与放弃必须填写原因，请用对应的动作".into(),
+            ));
+        }
+        if !allowed_statuses(item.item_type).contains(&status) {
+            return Err(Error::InvalidStatus(format!(
+                "{:?} 类型没有 {status:?} 状态",
+                item.item_type
+            )));
+        }
+        item.status = status;
+        item.clear_status_extras();
+        self.write_item(&item)?;
+        Ok(item)
+    }
+
+    /// 阻塞：必填原因与等待对象，并记下当前状态；已阻塞或已放弃的条目拒绝。
+    pub fn block_item(&self, id: &str, reason: &str, waiting_on: &str) -> Result<Item> {
+        let mut item = self.read_item(id)?;
+        match item.status {
+            Status::Blocked => return Err(Error::InvalidStatus("条目已处于阻塞状态".into())),
+            Status::Dropped => return Err(Error::InvalidStatus("已放弃的条目不再阻塞".into())),
+            _ => {}
+        }
+        let (reason, waiting_on) = (reason.trim(), waiting_on.trim());
+        if reason.is_empty() || waiting_on.is_empty() {
+            return Err(Error::InvalidStatus("阻塞必须填写原因与等待对象".into()));
+        }
+        item.blocked_from = Some(item.status);
+        item.blocked_reason = Some(reason.to_string());
+        item.blocked_waiting_on = Some(waiting_on.to_string());
+        item.status = Status::Blocked;
+        self.write_item(&item)?;
+        Ok(item)
+    }
+
+    /// 解除阻塞：回到阻塞前的状态（记录缺失或对新类型不合法时，回到类型默认状态）。
+    pub fn unblock_item(&self, id: &str) -> Result<Item> {
+        let mut item = self.read_item(id)?;
+        if item.status != Status::Blocked {
+            return Err(Error::InvalidStatus("条目当前未被阻塞".into()));
+        }
+        let restored = item.blocked_from.unwrap_or(item.item_type.default_status());
+        item.status = if allowed_statuses(item.item_type).contains(&restored) {
+            restored
+        } else {
+            item.item_type.default_status()
+        };
+        item.blocked_reason = None;
+        item.blocked_waiting_on = None;
+        item.blocked_from = None;
+        self.write_item(&item)?;
+        Ok(item)
+    }
+
+    /// 放弃：必填原因；离开 blocked 时清掉阻塞字段。
+    pub fn drop_item(&self, id: &str, reason: &str) -> Result<Item> {
+        let mut item = self.read_item(id)?;
+        let reason = reason.trim();
+        if reason.is_empty() {
+            return Err(Error::InvalidStatus("放弃条目必须填写原因".into()));
+        }
+        item.status = Status::Dropped;
+        item.dropped_reason = Some(reason.to_string());
+        item.blocked_reason = None;
+        item.blocked_waiting_on = None;
+        item.blocked_from = None;
+        self.write_item(&item)?;
+        Ok(item)
+    }
+
+    fn read_item(&self, id: &str) -> Result<Item> {
+        parse_item(&fs::read_to_string(self.item_path(id)?)?)
+    }
+
+    /// 写回条目文件；路径由 id + 标题算出，状态类操作不改标题，路径不变。
+    fn write_item(&self, item: &Item) -> Result<()> {
+        fs::write(
+            self.items_dir().join(file_name(&item.id, &item.title)),
+            render(item)?,
+        )?;
+        Ok(())
     }
 
     /// 列出全部条目，最新创建的在前。
@@ -220,6 +330,10 @@ fn render(item: &Item) -> Result<String> {
         item_type: item.item_type,
         title: item.title.clone(),
         status: item.status,
+        blocked_reason: item.blocked_reason.clone(),
+        blocked_waiting_on: item.blocked_waiting_on.clone(),
+        blocked_from: item.blocked_from,
+        dropped_reason: item.dropped_reason.clone(),
         space: item.space,
         project: item.project.clone(),
         priority: item.priority,
@@ -246,6 +360,10 @@ pub(crate) fn parse_item(raw: &str) -> Result<Item> {
         item_type: frontmatter.item_type,
         title: frontmatter.title,
         status: frontmatter.status,
+        blocked_reason: frontmatter.blocked_reason,
+        blocked_waiting_on: frontmatter.blocked_waiting_on,
+        blocked_from: frontmatter.blocked_from,
+        dropped_reason: frontmatter.dropped_reason,
         space: frontmatter.space,
         project: frontmatter.project,
         priority: frontmatter.priority,
