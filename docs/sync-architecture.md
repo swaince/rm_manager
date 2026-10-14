@@ -59,7 +59,7 @@ due: 2026-10-30
 tags: [报表, 后端]
 parent: null             # 拆解子项 / 头脑风暴会话的想法
 links: [SPIKE-2026-0003]
-created: 2026-10-14T10:00
+created: 2026-10-14T10:00:00Z # RFC3339（UTC）
 ---
 
 ## 背景
@@ -107,6 +107,7 @@ id 前缀与类型固定映射：`IDEA-` 想法 / `REQ-` 需求 / `BUG-` Bug / `
   `shortcut: 依赖系统 git；升级路线是内嵌 gitoxide，免依赖但认证要自写——等真有非开发用户时再换。`
 - Windows 细节：子进程加 `CREATE_NO_WINDOW` 防黑框闪现；路径按 UTF-8 处理；仓库局部设 `core.autocrlf=false` + `.gitattributes` 强制 LF。
 - 索引用 rusqlite + FTS5，按文件 mtime+hash 增量重建；vault 路径可配置且建议放在纯本地盘（别放 OneDrive 目录，避免二次同步打架）。
+- **vault 路径来源**：应用启动时读 app config dir 下的 `config.json`（字段 `vault_path`）；无配置则用「用户文档目录/rm-vault」并把配置写回。暂无设置 UI（后续票补）。
 - 桌面形态正好把 Tauri 的全局快捷键（速记）、托盘、系统通知用起来。
 
 ## 8. 明确不采用（及原因）
