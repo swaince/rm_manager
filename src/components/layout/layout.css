@@ -1,0 +1,90 @@
+@reference '../../styles/tailwind.css';
+.phoenix-row {
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--layout-gutter-y, 0px) 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.phoenix-col {
+  box-sizing: border-box;
+  display: block;
+  flex: 0 0 calc(var(--col-active-span, var(--col-span)) / 24 * 100%);
+  left: calc(var(--col-active-position, var(--col-position)) / 24 * 100%);
+  margin-inline-start: calc(var(--col-active-offset, var(--col-offset)) / 24 * 100%);
+  max-width: calc(var(--col-active-span, var(--col-span)) / 24 * 100%);
+  min-width: 0;
+  padding-inline: calc(var(--layout-gutter-x, 0px) / 2);
+  position: relative;
+}
+
+.phoenix-col[data-col-span='0'] {
+  display: none;
+}
+
+@variant sm {
+  .phoenix-col:not([data-col-span-sm='0']) {
+    --col-active-offset: var(--col-offset-sm);
+    --col-active-position: var(--col-position-sm);
+    --col-active-span: var(--col-span-sm);
+    display: block;
+  }
+
+  .phoenix-col[data-col-span-sm='0'] {
+    display: none;
+  }
+}
+
+@variant md {
+  .phoenix-col:not([data-col-span-md='0']) {
+    --col-active-offset: var(--col-offset-md);
+    --col-active-position: var(--col-position-md);
+    --col-active-span: var(--col-span-md);
+    display: block;
+  }
+
+  .phoenix-col[data-col-span-md='0'] {
+    display: none;
+  }
+}
+
+@variant lg {
+  .phoenix-col:not([data-col-span-lg='0']) {
+    --col-active-offset: var(--col-offset-lg);
+    --col-active-position: var(--col-position-lg);
+    --col-active-span: var(--col-span-lg);
+    display: block;
+  }
+
+  .phoenix-col[data-col-span-lg='0'] {
+    display: none;
+  }
+}
+
+@variant xl {
+  .phoenix-col:not([data-col-span-xl='0']) {
+    --col-active-offset: var(--col-offset-xl);
+    --col-active-position: var(--col-position-xl);
+    --col-active-span: var(--col-span-xl);
+    display: block;
+  }
+
+  .phoenix-col[data-col-span-xl='0'] {
+    display: none;
+  }
+}
+
+@variant 2xl {
+  .phoenix-col:not([data-col-span-xxl='0']) {
+    --col-active-offset: var(--col-offset-xxl);
+    --col-active-position: var(--col-position-xxl);
+    --col-active-span: var(--col-span-xxl);
+    display: block;
+  }
+
+  .phoenix-col[data-col-span-xxl='0'] {
+    display: none;
+  }
+}

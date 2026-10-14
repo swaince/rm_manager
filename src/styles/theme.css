@@ -1,0 +1,105 @@
+/* 本项目的主题与层叠层。分工约定：
+   - index.css：唯一入口，只做转发；
+   - theme.css（本文件）：所有手写主题与层叠（字体栈、滚动条、表单着色、动效降级等）；
+   - tailwind.css：由 shadcn-vue 脚手架生成，禁止修改。 */
+
+/* 组件库的 data-* 变体与动画关键帧（dialog / drawer / accordion 等依赖此处定义） */
+@import 'shadcn-vue/tailwind.css';
+
+@theme inline {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
+
+  /* 表单/抽屉页眉页脚着色（bg-form-header / bg-form-footer 工具类） */
+  --color-form-header: var(--form-header);
+  --color-form-footer: var(--form-footer);
+}
+
+:root {
+  --form-header: #f0f5ff;
+  --form-footer: #fafbfe;
+}
+
+.dark {
+  --form-header: #1c2c46;
+  --form-footer: #172031;
+}
+
+.form-header {
+  background-image: linear-gradient(to right, var(--form-header), var(--background));
+}
+
+:root {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+html {
+  min-width: 320px;
+  background: var(--background);
+}
+
+:where(*:not([data-slot='scroll-area-viewport'])) {
+  scrollbar-color: var(--border) transparent;
+  scrollbar-width: thin;
+}
+
+:where(*:not([data-slot='scroll-area-viewport']))::-webkit-scrollbar {
+  width: 0.5rem;
+  height: 0.5rem;
+}
+
+:where(*:not([data-slot='scroll-area-viewport']))::-webkit-scrollbar-track,
+:where(*:not([data-slot='scroll-area-viewport']))::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+:where(*:not([data-slot='scroll-area-viewport']))::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-color: var(--border);
+  background-clip: content-box;
+}
+
+:where(*:not([data-slot='scroll-area-viewport']))::-webkit-scrollbar-button {
+  display: none;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+/* 复合输入沿用 Input 的表面，避免继承按钮或页面背景。 */
+.form-control-surface {
+  background-color: transparent;
+}
+
+.dark .form-control-surface {
+  background-color: color-mix(in oklab, var(--input) 30%, transparent);
+}
+
+/* 原生 disabled 仍阻止操作；覆盖库的鼠标穿透，让禁用光标可见。 */
+:disabled {
+  pointer-events: auto;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
