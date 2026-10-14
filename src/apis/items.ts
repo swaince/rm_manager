@@ -64,6 +64,19 @@ export const SPACES: readonly Space[] = ['work', 'personal']
 
 export const PRIORITIES: readonly ItemPriority[] = ['P0', 'P1', 'P2', 'P3']
 
+export const STATUSES: readonly ItemStatus[] = [
+  'inbox',
+  'clarifying',
+  'refining',
+  'ready',
+  'scheduled',
+  'doing',
+  'blocked',
+  'review',
+  'done',
+  'dropped',
+]
+
 export const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   idea: '想法',
   requirement: '需求',
@@ -107,4 +120,60 @@ export function createItem(draft: ItemDraft): Promise<Item> {
 
 export function updateItem(id: string, edit: ItemEdit): Promise<Item> {
   return invoke<Item>('update_item', { id, edit })
+}
+
+/** 搜索条件：空条件 = 不过滤；字段名与核心 SearchQuery、保存视图的 YAML 一致（snake_case） */
+export interface SearchQuery {
+  text: string | null
+  types: ItemType[]
+  statuses: ItemStatus[]
+  tags: string[]
+  priority: ItemPriority[]
+  project: string | null
+  space: Space | null
+  /** 目标日期区间，含端点 */
+  due_before: string | null
+  due_after: string | null
+}
+
+/** 保存的视图：name 即文件名（views/<name>.yaml），query 是完整搜索条件 */
+export interface SavedView {
+  name: string
+  query: SearchQuery
+}
+
+export function emptySearchQuery(): SearchQuery {
+  return {
+    text: null,
+    types: [],
+    statuses: [],
+    tags: [],
+    priority: [],
+    project: null,
+    space: null,
+    due_before: null,
+    due_after: null,
+  }
+}
+
+export function searchItems(query: SearchQuery): Promise<Item[]> {
+  return invoke<Item[]>('search_items', { query })
+}
+
+/** 全量重建索引（索引可随时重建，删了/坏了都能用它兜底） */
+export function rebuildIndex(): Promise<void> {
+  return invoke('rebuild_index')
+}
+
+export function listViews(): Promise<SavedView[]> {
+  return invoke<SavedView[]>('list_views')
+}
+
+/** 保存视图；同名覆盖 */
+export function saveView(name: string, query: SearchQuery): Promise<SavedView> {
+  return invoke<SavedView>('save_view', { name, query })
+}
+
+export function deleteView(name: string): Promise<void> {
+  return invoke('delete_view', { name })
 }

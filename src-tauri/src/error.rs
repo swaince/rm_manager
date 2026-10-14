@@ -9,6 +9,10 @@ pub enum Error {
     InvalidFrontmatter(String),
     InvalidTitle,
     ItemNotFound(String),
+    Db(rusqlite::Error),
+    Json(serde_json::Error),
+    ViewNotFound(String),
+    InvalidViewName,
 }
 
 impl fmt::Display for Error {
@@ -20,6 +24,10 @@ impl fmt::Display for Error {
             Error::InvalidFrontmatter(msg) => write!(f, "frontmatter 格式错误：{msg}"),
             Error::InvalidTitle => write!(f, "条目标题不能为空"),
             Error::ItemNotFound(id) => write!(f, "条目不存在：{id}"),
+            Error::Db(e) => write!(f, "索引数据库失败：{e}"),
+            Error::Json(e) => write!(f, "条目序列化失败：{e}"),
+            Error::ViewNotFound(name) => write!(f, "视图不存在：{name}"),
+            Error::InvalidViewName => write!(f, "视图名不能为空"),
         }
     }
 }
@@ -41,6 +49,17 @@ impl From<serde_norway::Error> for Error {
 impl From<time::error::Format> for Error {
     fn from(e: time::error::Format) -> Self {
         Error::Time(e)
+    }
+}
+impl From<rusqlite::Error> for Error {
+    fn from(e: rusqlite::Error) -> Self {
+        Error::Db(e)
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(e: serde_json::Error) -> Self {
+        Error::Json(e)
     }
 }
 

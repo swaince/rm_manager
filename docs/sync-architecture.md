@@ -34,12 +34,14 @@
 rm-vault/                    # 独立目录（如 D:\rm-vault），本身就是一个 git 仓库
 ├─ .git/
 ├─ .gitattributes            # * text=auto eol=lf  —— 消灭 Windows CRLF 假冲突
+├─ .gitignore                # 忽略 .rm-index/（Vault::open 自动补上）
+├─ .rm-index/                # 本地 SQLite 索引（FTS5），可随时删除重建，永不进 Git
 ├─ items/                    # 所有条目，一文件一条
 │    REQ-2026-0001--报表导出重构.md
 │    SPIKE-2026-0003--消息队列选型.md
 │    IDEA-2026-0011--批量操作的想法.md
 ├─ decisions/                # 预研结论/决策记录（ADR 风格）
-├─ views/                    # 保存的查询视图（yaml）
+├─ views/                    # 保存的查询视图（一视图一 yaml，字段与 SearchQuery 一致）
 └─ attachments/              # 附件（P2 再决定大文件是否同步）
 ```
 
@@ -106,7 +108,7 @@ id 前缀与类型固定映射：`IDEA-` 想法 / `REQ-` 需求 / `BUG-` Bug / `
 - **git 用「调用系统 git 二进制」而非内嵌库**：两端都是 Windows、装了 Git for Windows 即可；系统 git 自带凭据管理、代理、证书处理，最省事。应用启动检测 `git --version`，缺失给引导。
   `shortcut: 依赖系统 git；升级路线是内嵌 gitoxide，免依赖但认证要自写——等真有非开发用户时再换。`
 - Windows 细节：子进程加 `CREATE_NO_WINDOW` 防黑框闪现；路径按 UTF-8 处理；仓库局部设 `core.autocrlf=false` + `.gitattributes` 强制 LF。
-- 索引用 rusqlite + FTS5，按文件 mtime+hash 增量重建；vault 路径可配置且建议放在纯本地盘（别放 OneDrive 目录，避免二次同步打架）。
+- 索引用 rusqlite + FTS5（trigram 分词，中文子串可搜；3 字符以下的查询回退标题 + 正文子串扫描），落 `vault/.rm-index/index.db`，按文件 mtime+size+哈希增量重建，删掉 / 写坏都会自动全量重建；vault 路径可配置且建议放在纯本地盘（别放 OneDrive 目录，避免二次同步打架）。
 - **vault 路径来源**：应用启动时读 app config dir 下的 `config.json`（字段 `vault_path`）；无配置则用「用户文档目录/rm-vault」并把配置写回。暂无设置 UI（后续票补）。
 - 桌面形态正好把 Tauri 的全局快捷键（速记）、托盘、系统通知用起来。
 

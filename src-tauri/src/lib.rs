@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod error;
+pub mod index;
 pub mod model;
 pub mod vault;
 
@@ -47,7 +48,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::create_item,
             commands::list_items,
-            commands::update_item
+            commands::update_item,
+            commands::search_items,
+            commands::rebuild_index,
+            commands::list_views,
+            commands::save_view,
+            commands::delete_view
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

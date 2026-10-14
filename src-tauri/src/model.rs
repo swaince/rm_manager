@@ -52,7 +52,9 @@ pub enum Space {
 
 /// 条目：一条目一 Markdown 文件，属性在 frontmatter，正文是 Markdown。
 /// `created` 是 RFC3339 字符串（UTC）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// 条目：一条目一 Markdown 文件，属性在 frontmatter，正文是 Markdown。
+/// `created` 是 RFC3339 字符串（UTC）；Deserialize 供索引把它整条存成 JSON。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Item {
     pub id: String,
     #[serde(rename = "type")]

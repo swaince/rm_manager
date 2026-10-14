@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -34,11 +34,16 @@ struct Frontmatter {
 }
 
 impl Vault {
-    /// 打开 vault（目录不存在则创建）。
+    /// 打开 vault（目录不存在则创建）；索引是本地派生物，根 .gitignore 一并补上忽略项。
     pub fn open(root: impl Into<PathBuf>) -> Result<Self> {
         let root = root.into();
         fs::create_dir_all(root.join("items"))?;
+        ensure_gitignores_index(&root)?;
         Ok(Self { root })
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
     }
 
     pub fn items_dir(&self) -> PathBuf {
@@ -165,6 +170,28 @@ impl Vault {
         Ok(names)
     }
 }
+/// vault 根 .gitignore 必须忽略索引目录，索引绝不进同步；已有内容原样保留。
+fn ensure_gitignores_index(root: &Path) -> Result<()> {
+    let path = root.join(".gitignore");
+    let existing = if path.is_file() {
+        fs::read_to_string(&path)?
+    } else {
+        String::new()
+    };
+    if existing
+        .lines()
+        .any(|line| matches!(line.trim(), ".rm-index/" | ".rm-index"))
+    {
+        return Ok(());
+    }
+    let mut text = existing;
+    if !text.is_empty() && !text.ends_with('\n') {
+        text.push('\n');
+    }
+    text.push_str(".rm-index/\n");
+    fs::write(&path, text)?;
+    Ok(())
+}
 
 /// 文件名 `ID--标题.md`；标题里的 Windows 非法字符与控制字符替换为 `-`。
 fn file_name(id: &str, title: &str) -> String {
@@ -181,7 +208,8 @@ fn file_name(id: &str, title: &str) -> String {
     }
 }
 
-fn is_illegal_in_file_name(c: char) -> bool {
+/// 文件名非法字符（视图文件名同样用它）。
+pub(crate) fn is_illegal_in_file_name(c: char) -> bool {
     c.is_control() || matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
 }
 
@@ -202,7 +230,8 @@ fn render(item: &Item) -> Result<String> {
     Ok(format!("---\n{frontmatter}---\n\n{}\n", item.body))
 }
 
-fn parse_item(raw: &str) -> Result<Item> {
+/// 解析条目文件（索引增量更新也用它）。
+pub(crate) fn parse_item(raw: &str) -> Result<Item> {
     // 手工编辑的文件可能是 CRLF，统一成 LF 再解析
     let raw = raw.replace("\r\n", "\n");
     let rest = raw
