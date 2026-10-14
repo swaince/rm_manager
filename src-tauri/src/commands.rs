@@ -1,7 +1,7 @@
 use tauri::State;
 
 use crate::error::Error;
-use crate::model::{Item, ItemEdit, ItemType, Space};
+use crate::model::{Item, ItemEdit, ItemType, Progress, Space};
 use crate::vault::Vault;
 
 // 命令层是薄胶水：只透传参数，业务在 vault / model 里。
@@ -25,4 +25,23 @@ pub fn update_item(vault: State<'_, Vault>, id: String, edit: ItemEdit) -> Resul
 #[tauri::command]
 pub fn list_items(vault: State<'_, Vault>) -> Result<Vec<Item>, Error> {
     vault.list_items()
+}
+
+#[tauri::command]
+pub fn set_parent(
+    vault: State<'_, Vault>,
+    id: String,
+    parent: Option<String>,
+) -> Result<Item, Error> {
+    vault.set_parent(&id, parent.as_deref())
+}
+
+#[tauri::command]
+pub fn children_of(vault: State<'_, Vault>, id: String) -> Result<Vec<Item>, Error> {
+    vault.children_of(&id)
+}
+
+#[tauri::command]
+pub fn parent_progress(vault: State<'_, Vault>, id: String) -> Result<Progress, Error> {
+    vault.parent_progress(&id)
 }

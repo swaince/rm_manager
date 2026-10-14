@@ -6,7 +6,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::error::{Error, Result};
-use crate::model::{Item, ItemEdit, ItemType, Priority, Space, Status};
+use crate::model::{Item, ItemEdit, ItemType, Priority, Progress, Space, Status};
 
 /// vault 目录：条目文件放 `items/` 子目录，一条目一 Markdown 文件。
 pub struct Vault {
@@ -30,6 +30,8 @@ struct Frontmatter {
     due: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    parent: Option<String>,
     created: String,
 }
 
@@ -68,6 +70,7 @@ impl Vault {
             priority: None,
             tags: Vec::new(),
             due: None,
+            parent: None,
             created: now.format(&Rfc3339)?,
             body: body.trim().to_string(),
         };
@@ -98,6 +101,7 @@ impl Vault {
             priority: edit.priority,
             tags: cleaned_tags(&edit.tags),
             due: optional_text(edit.due.as_deref()),
+            parent: old.parent,
             created: old.created,
             body: edit.body.trim().to_string(),
         };
@@ -108,6 +112,71 @@ impl Vault {
         }
         fs::write(&new_path, render(&item)?)?;
         Ok(item)
+    }
+
+    /// 拆解：给子条目设置 / 清空父条目（None 清空），返回更新后的子条目。
+    ///
+    /// 约束：父必须已存在、不能是自己、不能成环（沿提议父的祖先链上溯，遇到本条目即拒）；
+    /// 层级深度只建议不强制（FR-4.2 建议 ≤2 层，超过不报错）。
+    pub fn set_parent(&self, child_id: &str, parent: Option<&str>) -> Result<Item> {
+        let path = self.item_path(child_id)?;
+        let mut child = parse_item(&fs::read_to_string(&path)?)?;
+        let parent = optional_text(parent);
+
+        if let Some(parent_id) = parent.as_deref() {
+            if parent_id == child.id {
+                return Err(Error::InvalidParent("条目不能以自己为父".into()));
+            }
+            self.item_path(parent_id)?; // 父条目必须已存在
+            // 沿父的祖先链上溯，遇到本条目即成环；祖先缺失（孤儿子项）或链上重复（手工编辑留下的旧环）即止。
+            let mut current = Some(parent_id.to_string());
+            let mut seen = std::collections::HashSet::new();
+            while let Some(id) = current {
+                if id == child.id {
+                    return Err(Error::InvalidParent(format!(
+                        "{} 已在 {parent_id} 的祖先链上，会形成循环",
+                        child.id
+                    )));
+                }
+                if !seen.insert(id.clone()) {
+                    break;
+                }
+                current = match self.item_path(&id) {
+                    Ok(ancestor_path) => parse_item(&fs::read_to_string(ancestor_path)?)?.parent,
+                    Err(_) => None,
+                };
+            }
+        }
+
+        child.parent = parent;
+        fs::write(&path, render(&child)?)?;
+        Ok(child)
+    }
+
+    /// 直接子条目（不递归孙辈），按 created 升序；同一秒创建时按 id 升序保证顺序稳定。
+    pub fn children_of(&self, id: &str) -> Result<Vec<Item>> {
+        let mut children: Vec<Item> = self
+            .list_items()?
+            .into_iter()
+            .filter(|item| item.parent.as_deref() == Some(id))
+            .collect();
+        children.sort_by(|a, b| a.created.cmp(&b.created).then_with(|| a.id.cmp(&b.id)));
+        Ok(children)
+    }
+
+    /// 父项进度：只算直接子项，不递归孙辈；全部子项都 dropped 时是 0/0。
+    pub fn parent_progress(&self, id: &str) -> Result<Progress> {
+        let mut progress = Progress { done: 0, total: 0 };
+        for child in self.children_of(id)? {
+            if child.status == Status::Dropped {
+                continue;
+            }
+            progress.total += 1;
+            if child.status == Status::Done {
+                progress.done += 1;
+            }
+        }
+        Ok(progress)
     }
 
     /// 列出全部条目，最新创建的在前。
@@ -197,6 +266,7 @@ fn render(item: &Item) -> Result<String> {
         priority: item.priority,
         due: item.due.clone(),
         tags: item.tags.clone(),
+        parent: item.parent.clone(),
         created: item.created.clone(),
     })?;
     Ok(format!("---\n{frontmatter}---\n\n{}\n", item.body))
@@ -222,6 +292,7 @@ fn parse_item(raw: &str) -> Result<Item> {
         priority: frontmatter.priority,
         tags: frontmatter.tags,
         due: frontmatter.due,
+        parent: frontmatter.parent,
         created: frontmatter.created,
         body: body.trim().to_string(),
     })

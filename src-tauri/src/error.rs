@@ -9,6 +9,7 @@ pub enum Error {
     InvalidFrontmatter(String),
     InvalidTitle,
     ItemNotFound(String),
+    InvalidParent(String),
 }
 
 impl fmt::Display for Error {
@@ -20,6 +21,7 @@ impl fmt::Display for Error {
             Error::InvalidFrontmatter(msg) => write!(f, "frontmatter 格式错误：{msg}"),
             Error::InvalidTitle => write!(f, "条目标题不能为空"),
             Error::ItemNotFound(id) => write!(f, "条目不存在：{id}"),
+            Error::InvalidParent(msg) => write!(f, "父条目设置失败：{msg}"),
         }
     }
 }

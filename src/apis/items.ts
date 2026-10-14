@@ -27,8 +27,15 @@ export interface Item {
   priority: ItemPriority | null
   tags: string[]
   due: string | null
+  parent: string | null
   created: string
   body: string
+}
+
+/** 父项聚合进度：total = 未 dropped 的直接子项数，done = 其中已完成的数量 */
+export interface Progress {
+  done: number
+  total: number
 }
 
 /** 新建条目载荷；id / status / created 由核心生成 */
@@ -107,4 +114,17 @@ export function createItem(draft: ItemDraft): Promise<Item> {
 
 export function updateItem(id: string, edit: ItemEdit): Promise<Item> {
   return invoke<Item>('update_item', { id, edit })
+}
+
+/** 拆解：给子条目设置 / 清空父条目（null 清空），返回更新后的条目 */
+export function setParent(id: string, parent: string | null): Promise<Item> {
+  return invoke<Item>('set_parent', { id, parent })
+}
+
+export function childrenOf(id: string): Promise<Item[]> {
+  return invoke<Item[]>('children_of', { id })
+}
+
+export function parentProgress(id: string): Promise<Progress> {
+  return invoke<Progress>('parent_progress', { id })
 }

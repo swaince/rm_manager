@@ -5,17 +5,39 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
 import ItemCreateDialog from '@/components/item/ItemCreateDialog.vue'
 import ItemEditDialog from '@/components/item/ItemEditDialog.vue'
-import { ITEM_TYPE_LABELS, STATUS_LABELS, SPACE_LABELS, listItems, type Item } from '@/apis/items'
+import {
+  ITEM_TYPE_LABELS,
+  STATUS_LABELS,
+  SPACE_LABELS,
+  listItems,
+  parentProgress,
+  type Item,
+  type Progress,
+} from '@/apis/items'
 
 const items = ref<Item[]>([])
 const loading = ref(true)
 const errorMessage = ref('')
+
+/** 父项进度徽标（完成 x/y）：只给「被别的条目当作父」的条目取一次聚合 */
+const progress = ref<Record<string, Progress>>({})
+
+async function refreshProgress() {
+  const parentIds = [
+    ...new Set(items.value.map((item) => item.parent).filter((id): id is string => !!id)),
+  ]
+  const entries = await Promise.all(
+    parentIds.map(async (id) => [id, await parentProgress(id)] as const),
+  )
+  progress.value = Object.fromEntries(entries)
+}
 
 async function load() {
   loading.value = true
   errorMessage.value = ''
   try {
     items.value = await listItems()
+    await refreshProgress()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : String(error)
   } finally {
@@ -29,6 +51,7 @@ onMounted(load)
 function onUpdated(updated: Item) {
   const index = items.value.findIndex((item) => item.id === updated.id)
   if (index !== -1) items.value[index] = updated
+  void refreshProgress()
 }
 </script>
 
@@ -67,7 +90,15 @@ function onUpdated(updated: Item) {
         <Card>
           <CardContent class="flex items-center justify-between gap-3">
             <div class="flex min-w-0 flex-col gap-1">
-              <span class="font-medium">{{ item.title }}</span>
+              <div class="flex items-center gap-2">
+                <span class="font-medium">{{ item.title }}</span>
+                <span
+                  v-if="progress[item.id]"
+                  class="text-muted-foreground inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium tabular-nums"
+                >
+                  {{ progress[item.id].done }}/{{ progress[item.id].total }}
+                </span>
+              </div>
               <span class="text-muted-foreground text-xs">
                 {{ item.id }} · {{ ITEM_TYPE_LABELS[item.type] }} · {{ SPACE_LABELS[item.space] }} ·
                 {{ STATUS_LABELS[item.status] }} · {{ item.created.slice(0, 10) }}

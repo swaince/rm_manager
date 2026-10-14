@@ -65,6 +65,8 @@ pub struct Item {
     pub priority: Option<Priority>,
     pub tags: Vec<String>,
     pub due: Option<String>,
+    /// 拆解：父条目 id；顶层条目为 None
+    pub parent: Option<String>,
     pub created: String,
     pub body: String,
 }
@@ -95,4 +97,11 @@ pub struct ItemEdit {
     pub tags: Vec<String>,
     #[serde(default)]
     pub due: Option<String>,
+}
+
+/// 父项聚合进度：total = 未 dropped 的直接子项数，done = 其中 status=done 的数量。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Progress {
+    pub done: usize,
+    pub total: usize,
 }
