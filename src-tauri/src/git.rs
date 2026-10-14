@@ -16,7 +16,7 @@ const IDENTITY: [(&str, &str); 2] = [
 ];
 
 /// 所有 git 子进程都从 vault 根目录发起；Windows 下加 CREATE_NO_WINDOW 防黑框闪现。
-fn git_command(root: &Path) -> Command {
+pub(crate) fn git_command(root: &Path) -> Command {
     let mut command = Command::new("git");
     command.current_dir(root);
     #[cfg(windows)]
@@ -27,7 +27,7 @@ fn git_command(root: &Path) -> Command {
     command
 }
 
-fn run(root: &Path, args: &[&str]) -> std::io::Result<std::process::Output> {
+pub(crate) fn run(root: &Path, args: &[&str]) -> std::io::Result<std::process::Output> {
     git_command(root).args(args).output()
 }
 

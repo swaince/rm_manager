@@ -22,7 +22,6 @@ import ItemBoard from '@/components/item/ItemBoard.vue'
 import ItemList from '@/components/item/ItemList.vue'
 import { ITEMS_CHANGED } from '@/lib/capture'
 import {
-  estimateText,
   estimateUnit,
   ESTIMATE_UNIT_LABELS,
   ESTIMATE_UNITS,

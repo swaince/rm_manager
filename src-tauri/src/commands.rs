@@ -1,9 +1,10 @@
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 
 use crate::error::Error;
 use crate::git::TimelineEntry;
 use crate::index::{SavedView, SearchQuery};
 use crate::model::{Item, ItemEdit, ItemType, Progress, Space, Status};
+use crate::sync::{ConflictEntry, ConflictResolution, SYNC_STATUS_EVENT, SyncFailure, SyncStatus};
 use crate::vault::Vault;
 
 // 命令层是薄胶水：只透传参数，业务在 vault / model 里。
@@ -159,4 +160,69 @@ pub fn schedule_item(
 #[tauri::command]
 pub fn set_focus(vault: State<'_, Vault>, id: String, date: Option<String>) -> Result<Item, Error> {
     vault.set_focus(&id, date.as_deref())
+}
+
+// —— 远端同步（P0-11）：命令层只管广播状态，协议全在 sync.rs ——
+
+/// 同步状态（纯本地查询，不触网）：角标与设置对话框都用它。
+#[tauri::command]
+pub fn sync_status(vault: State<'_, Vault>) -> Result<SyncStatus, Error> {
+    vault.sync_status()
+}
+
+/// 手动同步一次；状态变化广播给前端（角标据此刷新）。
+#[tauri::command]
+pub fn sync(app: tauri::AppHandle, vault: State<'_, Vault>) -> Result<SyncStatus, Error> {
+    let status = vault.sync()?;
+    let _ = app.emit(SYNC_STATUS_EVENT, &status);
+    Ok(status)
+}
+
+/// 连接远端：配置 origin + 存凭据 + 首次推送；失败分类在返回状态的 last_error 里。
+#[tauri::command]
+pub fn set_remote(
+    app: tauri::AppHandle,
+    vault: State<'_, Vault>,
+    url: String,
+    user: String,
+    token: String,
+) -> Result<SyncStatus, Error> {
+    let status = vault.set_remote(&url, &user, &token)?;
+    let _ = app.emit(SYNC_STATUS_EVENT, &status);
+    Ok(status)
+}
+
+/// 测试连接：只读探测，不改配置、不写凭据；null = 连接成功。
+#[tauri::command]
+pub fn test_remote(
+    vault: State<'_, Vault>,
+    url: String,
+    user: String,
+    token: String,
+) -> Result<Option<SyncFailure>, Error> {
+    vault.test_remote(&url, &user, &token)
+}
+
+/// 冲突条目列表（冲突对话框用）。
+#[tauri::command]
+pub fn sync_conflicts(vault: State<'_, Vault>) -> Result<Vec<ConflictEntry>, Error> {
+    vault.sync_conflicts()
+}
+
+/// 三选一解决一处冲突；全部解决后走 continue_sync。
+#[tauri::command]
+pub fn resolve_conflict(
+    vault: State<'_, Vault>,
+    path: String,
+    resolution: ConflictResolution,
+) -> Result<(), Error> {
+    vault.resolve_conflict(&path, resolution)
+}
+
+/// 冲突解决完收尾：rebase --continue + push；再撞冲突返回冲突状态。
+#[tauri::command]
+pub fn continue_sync(app: tauri::AppHandle, vault: State<'_, Vault>) -> Result<SyncStatus, Error> {
+    let status = vault.continue_rebase_and_push()?;
+    let _ = app.emit(SYNC_STATUS_EVENT, &status);
+    Ok(status)
 }

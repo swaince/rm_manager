@@ -4,15 +4,19 @@ pub mod error;
 pub mod git;
 pub mod index;
 pub mod model;
+pub mod sync;
 pub mod vault;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager, RunEvent};
 
+use crate::sync::{SYNC_STATUS_EVENT, SyncStatus};
 use crate::vault::Vault;
 
 /// 迷你速记窗的 window label（tauri.conf.json 预置、启动时隐藏、同一 index.html）。
@@ -68,6 +72,26 @@ fn resolve_vault_path(app: &AppHandle) -> Result<PathBuf, Box<dyn std::error::Er
     Ok(vault_path)
 }
 
+/// 定时同步间隔（FR-9.1）：启动拉一次、每 15 分钟同步一次、退出前推一次。
+const SYNC_INTERVAL: Duration = Duration::from_secs(15 * 60);
+/// 退出推送的最长等待：超时直接放行退出（推送是原子的，杀掉不留半个提交）。
+const EXIT_PUSH_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// 退出推送只启动一次：ExitRequested 在真正退出前还会来一次。
+static EXIT_PUSH_STARTED: AtomicBool = AtomicBool::new(false);
+
+/// 同步一次并把状态广播给前端（角标与冲突对话框据此刷新）；`on_exit` 走带超时的退出推送。
+fn sync_now(app: &AppHandle, on_exit: bool) {
+    let vault = app.state::<Vault>();
+    let status = if on_exit {
+        vault.push_on_exit(EXIT_PUSH_TIMEOUT)
+    } else {
+        vault.sync()
+    };
+    let payload = status.unwrap_or_else(|error| SyncStatus::failed(error.to_string()));
+    let _ = app.emit(SYNC_STATUS_EVENT, payload);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -82,6 +106,18 @@ pub fn run() {
             if let Err(error) = setup_tray(app.handle()) {
                 eprintln!("托盘初始化失败：{error}");
             }
+            // 启动拉取一次，之后每 15 分钟同步一次：都在后台跑，不挡启动
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn_blocking(move || sync_now(&handle, false));
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(SYNC_INTERVAL).await;
+                    let handle = handle.clone();
+                    let _ = tauri::async_runtime::spawn_blocking(move || sync_now(&handle, false))
+                        .await;
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -107,8 +143,29 @@ pub fn run() {
             commands::item_timeline,
             commands::parent_progress,
             commands::schedule_item,
-            commands::set_focus
+            commands::set_focus,
+            commands::sync,
+            commands::sync_status,
+            commands::set_remote,
+            commands::test_remote,
+            commands::sync_conflicts,
+            commands::resolve_conflict,
+            commands::continue_sync,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let RunEvent::ExitRequested { api, .. } = event {
+                // 退出前推一次：只拦截一次，推完（或 10 秒超时）再真正退出
+                if EXIT_PUSH_STARTED.swap(true, Ordering::SeqCst) {
+                    return;
+                }
+                api.prevent_exit();
+                let handle = app.clone();
+                std::thread::spawn(move || {
+                    sync_now(&handle, true);
+                    handle.exit(0);
+                });
+            }
+        });
 }

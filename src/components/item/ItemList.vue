@@ -143,6 +143,9 @@ async function changePriority(item: Item, value: string) {
       tags: item.tags,
       due: item.due,
       body: item.body,
+      estimate: item.estimate,
+      acceptance: item.acceptance,
+      clarifications: item.clarifications,
     }),
   )
 }

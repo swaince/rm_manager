@@ -418,7 +418,7 @@ impl Vault {
     }
 
     /// id 规则 `TYPE-YYYY-NNNN`：取该类型现有文件的最大序号 +1（跨年份取全局最大，保证不撞号）。
-    fn next_id(&self, item_type: ItemType, year: i32) -> Result<String> {
+    pub(crate) fn next_id(&self, item_type: ItemType, year: i32) -> Result<String> {
         let prefix = item_type.prefix();
         let mut max = 0u32;
         for name in self.item_files()? {
@@ -470,7 +470,7 @@ fn ensure_gitignores_index(root: &Path) -> Result<()> {
 }
 
 /// 文件名 `ID--标题.md`；标题里的 Windows 非法字符与控制字符替换为 `-`。
-fn file_name(id: &str, title: &str) -> String {
+pub(crate) fn file_name(id: &str, title: &str) -> String {
     let safe: String = title
         .chars()
         .map(|c| if is_illegal_in_file_name(c) { '-' } else { c })
@@ -490,7 +490,7 @@ pub(crate) fn is_illegal_in_file_name(c: char) -> bool {
 }
 
 /// 渲染条目文件内容：frontmatter + 正文。
-fn render(item: &Item) -> Result<String> {
+pub(crate) fn render(item: &Item) -> Result<String> {
     let frontmatter = serde_norway::to_string(&Frontmatter {
         id: item.id.clone(),
         item_type: item.item_type,

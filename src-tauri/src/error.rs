@@ -16,6 +16,8 @@ pub enum Error {
     /// 状态流转被规则拒绝：目标不属于该类型、绕过必填原因、重复阻塞等
     InvalidStatus(String),
     InvalidParent(String),
+    /// 远端同步的本地 / 配置类失败（网络与认证类走 SyncStatus 的分类，不走这里）
+    Sync(String),
 }
 
 impl fmt::Display for Error {
@@ -33,6 +35,7 @@ impl fmt::Display for Error {
             Error::InvalidViewName => write!(f, "视图名不能为空"),
             Error::InvalidStatus(msg) => write!(f, "状态变更被拒：{msg}"),
             Error::InvalidParent(msg) => write!(f, "父条目设置失败：{msg}"),
+            Error::Sync(msg) => write!(f, "同步失败：{msg}"),
         }
     }
 }

@@ -7,6 +7,7 @@ import CaptureWindow from '@/views/CaptureWindow.vue'
 import InboxTriageView from '@/views/InboxTriageView.vue'
 import ItemListView from '@/views/ItemListView.vue'
 import PlanningView from '@/views/PlanningView.vue'
+import SyncCenter from '@/components/sync/SyncCenter.vue'
 import { openCaptureWindow, registerCaptureShortcuts } from '@/lib/capture'
 
 /** 迷你速记窗复用同一 index.html：?capture=1 打开，窗口 label 兜底 */
@@ -33,9 +34,12 @@ onMounted(() => {
         <TabsTrigger value="inbox">收件箱</TabsTrigger>
         <TabsTrigger value="planning">规划</TabsTrigger>
       </TabsList>
-      <Button variant="outline" size="sm" @click="openCaptureWindow">
-        速记（Ctrl+Shift+Space）
-      </Button>
+      <div class="flex flex-wrap items-center gap-2">
+        <SyncCenter />
+        <Button variant="outline" size="sm" @click="openCaptureWindow">
+          速记（Ctrl+Shift+Space）
+        </Button>
+      </div>
     </header>
     <TabsContent value="items">
       <ItemListView />
@@ -47,5 +51,4 @@ onMounted(() => {
       <PlanningView />
     </TabsContent>
   </Tabs>
-</template>
 </template>

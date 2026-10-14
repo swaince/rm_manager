@@ -95,6 +95,13 @@ id 前缀与类型固定映射：`IDEA-` 想法 / `REQ-` 需求 / `BUG-` Bug / `
 3. **推送**：定时或退出时 `git push`。失败（断网/认证）静默重试，状态栏角标提示，不弹窗打断。
 4. **冲突**（两端改了同一条目同一处）：rebase 中止 → 应用顶部横幅列出冲突条目 → 三选一解决：「保留双方（远端版存为副本条目）/ 用本地 / 用远端」→ 自动完成 rebase + push。
 
+**P0-11 落地时定死的几个细节：**
+
+- **两侧内容的取法**：rebase 中 ours / theirs 语义反转——stage `:2:` 是 HEAD 一侧（本次同步的远端内容），`:3:` 才是本地改动。统一按 stage 号取内容，不用 `--ours` / `--theirs` 旗标。
+- **「保留双方」的 id 策略**：本地版留在原文件；远端版用 `next_id` 生成新 id（`TYPE-YYYY-NNNN`，不撞号不做血缘）、标题追加「（冲突副本 MM-DD）」，写成独立条目文件。解决后 rebase 继续，两端都拿到两条条目——任何一侧内容都不丢。
+- **解决成空提交**：选了「用远端」时解决结果与远端父提交完全一致，提交会变空；git 会拦下要 `--skip`——语义上正是「丢弃这条本地提交」，直接跳过。
+- **退出推送超时**：退出钩子拦截一次 `ExitRequested`，带 ~10 秒超时推送，超时杀掉 git 子进程直接放行退出——服务端更新引用是原子的，杀掉要么全推上要么没推上，不会留半个提交；没推上的下次启动续推。若退出时正停在冲突上则不推，现场原样保留、下次启动继续提示解决。
+
 **让冲突尽量不可能发生，靠的是设计而不是补丁：**
 
 - 一条目一文件 → 改不同条目的操作永不冲突
@@ -107,7 +114,8 @@ id 前缀与类型固定映射：`IDEA-` 想法 / `REQ-` 需求 / `BUG-` Bug / `
 - **首选 Gitee 私有仓库**：国内双线稳定、免费、公司网络一般可达。HTTPS + 私人令牌（最小权限即可）。
 - **备选 GitHub 私有仓库**：用 fine-grained PAT（只授权该仓库 Contents 读写）；公司网络可能慢或被策略拦截，必要时配代理。
 - **不用 SSH 的理由**：公司网络常封 22 端口；HTTPS 走 443 最不容易被拦（SSH 作为可选支持）。
-- **令牌存放**：存 Windows 凭据管理器（keyring），调用 git 时临时注入，不写进 `.git/config` 明文，不动全局 git 配置。
+- **令牌存放**：存 Windows 凭据管理器（keyring crate；服务 `rm-manager`、账户 = 远端 URL、内容 `{user, token}` JSON），调用 git 时逐次以 `-c http.extraHeader=Authorization: Basic base64(user:token)` 注入，不写进 `.git/config` 明文，不动全局 git 配置。取舍：令牌不落任何文件；代价是它以命令行参数形式短暂出现在本机进程列表里（本机单用户场景接受）。远端操作同时设 `GIT_TERMINAL_PROMPT=0`——GUI 没有控制台，认证失败必须立刻报错而不是挂着等输入。
+- **连接参数**：远端 URL + PAT + 用户名（Gitee 的 HTTPS 基本认证要用户名；GitHub 可留空）。本地路径 / `file://` 远端（测试与 U 盘兜底）视为无认证，不碰凭据库。
 - **空间级远端隔离**（工作+个人兼顾的关键设计）：`work` 和 `personal` 两个空间可以各配一个远端仓库，互不混装；工作空间若有保密顾虑，可以干脆**不配远端、只留本地**（同步开关按空间独立）。
 - **合规提醒**：把工作内容推到外部托管属于数据外传，先确认公司政策再连远端。
 
@@ -126,6 +134,9 @@ id 前缀与类型固定映射：`IDEA-` 想法 / `REQ-` 需求 / `BUG-` Bug / `
 - 索引用 rusqlite + FTS5（trigram 分词，中文子串可搜；3 字符以下的查询回退标题 + 正文子串扫描），落 `vault/.rm-index/index.db`，按文件 mtime+size+哈希增量重建，删掉 / 写坏都会自动全量重建；vault 路径可配置且建议放在纯本地盘（别放 OneDrive 目录，避免二次同步打架）。
 - **vault 路径来源**：应用启动时读 app config dir 下的 `config.json`（字段 `vault_path`）；无配置则用「用户文档目录/rm-vault」并把配置写回。暂无设置 UI（后续票补）。
 - 桌面形态正好把 Tauri 的全局快捷键（速记）、托盘、系统通知用起来。
+- **远端同步（P0-11 已实现）**：核心 API 在 `src-tauri/src/sync.rs`——`set_remote`（配置 origin + 存凭据 + 首次 `push -u`，顺带把仓库级 `core.autocrlf=false` 与 `.gitattributes` 的 LF 补救补上）、`sync_status`（纯本地查询，不 fetch）、`sync`（兜底 commit → fetch → 落后 `pull --rebase --autostash` → 领先 push）、`sync_conflicts`、`resolve_conflict`、`continue_rebase_and_push`、`push_on_exit`。状态模型 `{state, ahead, behind, pulled, pushed, last_error{kind: network|auth|conflict, message}}`；`behind` 相对本地已拉取的 `origin/<branch>`，刚被别人推的新提交要等下一次 fetch 才可见。网络 / 认证 / 冲突都不返回错误：分类写进状态的 `last_error`，失败不打断使用。
+  - 胶水：启动时异步拉取一次，`tauri::async_runtime` 每 15 分钟 `sync`，`RunEvent::ExitRequested` 拦截一次做带超时的退出推送；状态变化统一广播 `sync-status` 事件，前端角标与冲突对话框据此刷新。同步操作串行化（进程内互斥），避免定时任务与手动按钮撞上 git 的 `index.lock`。
+  - 测试：`src-tauri/tests/sync.rs`——临时目录里两个 vault + 一个裸库当远端（本地路径传输，无网络无鉴权），覆盖首次推送、双向推拉、冲突检出与三种解决路径；凭据 / 定时 / 退出钩子属胶水层，不做自动化测试。
 
 ## 8. 明确不采用（及原因）
 
