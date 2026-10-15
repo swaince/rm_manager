@@ -48,16 +48,26 @@ import {
   type TimelineEntry,
 } from '@/apis/items'
 
-const props = defineProps<{ item: Item }>()
+const props = defineProps<{ item: Item; open?: boolean }>()
 
 const emit = defineEmits<{
   updated: [item: Item]
+  'update:open': [value: boolean]
 }>()
 
 /** 停止输入 800ms 后落盘；关闭对话框时补一次未落盘的修改 */
 const SAVE_DELAY_MS = 800
 
-const open = ref(false)
+/** 受控模式（外部传 open 时）：跟随 prop；非受控（列表 / 整理台内按钮触发）：内部自管 */
+const innerOpen = ref(false)
+const controlled = computed(() => props.open !== undefined)
+const open = computed({
+  get: () => props.open ?? innerOpen.value,
+  set: (value: boolean) => {
+    innerOpen.value = value
+    emit('update:open', value)
+  },
+})
 const saving = ref(false)
 const errorMessage = ref('')
 
@@ -440,7 +450,7 @@ async function confirmAction() {
 
 <template>
   <Dialog v-model:open="open">
-    <DialogTrigger as-child>
+    <DialogTrigger v-if="!controlled" as-child>
       <slot name="trigger">
         <Button variant="outline" size="sm">编辑</Button>
       </slot>

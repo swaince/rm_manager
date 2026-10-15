@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -23,11 +23,23 @@ import {
   type Space,
 } from '@/apis/items'
 
+const props = defineProps<{ open?: boolean }>()
+
 const emit = defineEmits<{
   created: [item: Item]
+  'update:open': [value: boolean]
 }>()
 
-const open = ref(false)
+/** 受控模式（外部传 open 时）：跟随 prop；非受控（列表内按钮触发）：内部自管 */
+const innerOpen = ref(false)
+const controlled = computed(() => props.open !== undefined)
+const open = computed({
+  get: () => props.open ?? innerOpen.value,
+  set: (value: boolean) => {
+    innerOpen.value = value
+    emit('update:open', value)
+  },
+})
 const submitting = ref(false)
 const errorMessage = ref('')
 
@@ -83,7 +95,7 @@ async function submit() {
 
 <template>
   <Dialog v-model:open="open">
-    <DialogTrigger as-child>
+    <DialogTrigger v-if="!controlled" as-child>
       <Button>新建条目</Button>
     </DialogTrigger>
     <DialogContent>
